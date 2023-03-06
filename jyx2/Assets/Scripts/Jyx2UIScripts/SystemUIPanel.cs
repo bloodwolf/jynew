@@ -10,124 +10,118 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using Cysharp.Threading.Tasks;
+using i18n.TranslatorDef;
+using Jyx2;
 using UnityEngine;
 using UnityEngine.UI;
 
-public partial class SystemUIPanel:Jyx2_UIBase
+public partial class SystemUIPanel : Jyx2_UIBase
 {
-    public override UILayer Layer => UILayer.NormalUI;
+	public override UILayer Layer => UILayer.NormalUI;
 
-    private int current_selection = -1;
 
-    private List<Action> ActionList=new List<Action>();
-    private List<Button> ButtonList = new List<Button>();
-    private void OnEnable()
-    {
-        GlobalHotkeyManager.Instance.RegistHotkey(this, KeyCode.Escape, HidePanel);
-        GlobalHotkeyManager.Instance.RegistHotkey(this, KeyCode.UpArrow, () =>
-        {
-            if(current_selection>0) ChangeSelection(-1);
-        });
-        GlobalHotkeyManager.Instance.RegistHotkey(this, KeyCode.DownArrow, () =>
-        {
-            if(current_selection<4) ChangeSelection(1);
-        });
-        GlobalHotkeyManager.Instance.RegistHotkey(this, KeyCode.Space, () =>
-        {
-            if (current_selection != -1)
-            {
-                OnItemSelect();
+	protected override void OnCreate()
+	{
+		InitTrans();
+
+		SaveButton_Button.onClick.AddListener(Save);
+		LoadButton_Button.onClick.AddListener(Load);
+		GraphicSettingsButton_Button.onClick.AddListener(OnSettingBtnClick);
+		MainMenuButton_Button.onClick.AddListener(Quit2MainMenu);
+		ResumeGameBtn_Button.onClick.AddListener(HidePanel);
+
+    }
+
+	private void OnDestroy()
+	{
+        SaveButton_Button.onClick.RemoveListener(Save);
+        LoadButton_Button.onClick.RemoveListener(Load);
+        GraphicSettingsButton_Button.onClick.RemoveListener(OnSettingBtnClick);
+        MainMenuButton_Button.onClick.RemoveListener(Quit2MainMenu);
+        ResumeGameBtn_Button.onClick.RemoveListener(HidePanel);
+    }
+
+
+	async void Save()
+	{
+		if (!LevelMaster.IsInWorldMap && RuntimeEnvSetup.CurrentModConfig != null && RuntimeEnvSetup.CurrentModConfig.EnableSaveBigMapOnly)
+		{
+			StoryEngine.DisplayPopInfo("本MOD只允许在大地图进行存档");
+			return;
+		}
+
+		Action<int> OnSave = (idx) =>
+		{
+			if (LevelMaster.Instance != null)
+				LevelMaster.Instance.OnManuelSave(idx);
+		};
+
+		var titleText = "选择存档位".GetContent(nameof(SystemUIPanel));
+
+
+        await Jyx2_UIManager.Instance.ShowUIAsync(nameof(SavePanel), OnSave, titleText);
+	}
+
+	async void Load()
+	{
+		Action<int> OnLoadSelect = (archiveIndex) =>
+		{
+			var summary = GameSaveSummary.Load(archiveIndex);
+			if (summary.IsEmpty())
+			{
+                StoryEngine.DisplayPopInfo("存档为空");
+				return;
             }
-        });
-        ChangeSelection(0);
-    }
+			if (!summary.ModId.ToLower().Equals(RuntimeEnvSetup.CurrentModId.ToLower()))
+			{
+				HidePanel();
+				List<string> selectionContent = new List<string>() { "是", "否" };
+				string msg = "该存档MOD不匹配，载入可能导致数据错乱，是否继续？";
+                Action<int> onChatSelect = (selection) =>
+                {
+                    if (selection == 0)
+                    {
+                        StoryEngine.DoLoadGame(archiveIndex);
+                    }
+                };
 
-    void ChangeSelection(int num)
-    {
-        current_selection += num;
-        for (int i = 0; i < ButtonList.Count; i++)
-        {
-            ButtonList[i].gameObject.transform.GetChild(0).GetComponent<Text>().color = i == current_selection
-                ? ColorStringDefine.system_item_selected
-                : ColorStringDefine.system_item_normal;
-        }
-    }
+                Jyx2_UIManager.Instance.ShowUIAsync(nameof(ChatUIPanel), ChatType.Selection, "0", msg, selectionContent, onChatSelect).Forget();
+			}
+			else
+			{
+				StoryEngine.DoLoadGame(archiveIndex);
+			}
+		};
 
-    void OnItemSelect()
-    {
-        ActionList[current_selection]?.Invoke();
-    }
+		var titleText = "选择读档位".GetContent(nameof(SystemUIPanel));
 
-    private void OnDisable()
-    {
-        current_selection = -1;
-        GlobalHotkeyManager.Instance.UnRegistHotkey(this, KeyCode.Escape);
-        GlobalHotkeyManager.Instance.UnRegistHotkey(this, KeyCode.DownArrow);
-        GlobalHotkeyManager.Instance.UnRegistHotkey(this, KeyCode.UpArrow);
-        GlobalHotkeyManager.Instance.UnRegistHotkey(this, KeyCode.Space);
-    }
+        await Jyx2_UIManager.Instance.ShowUIAsync(nameof(SavePanel), OnLoadSelect, titleText);
 
-    protected override void OnCreate()
-    {
-        InitTrans();
-        IsBlockControl = true;
-        ActionList.Add(Save);
-        ActionList.Add(Load);
-        ActionList.Add(GraphicSetting);
-        ActionList.Add(Quit2MainMenu);
-        ActionList.Add(HidePanel);
+	}
 
-        ButtonList.Add(SaveButton_Button);
-        ButtonList.Add(LoadButton_Button);
-        ButtonList.Add(GraphicSettingsButton_Button);
-        ButtonList.Add(MainMenuButton_Button);
-        ButtonList.Add(QuitGameButton_Button);
+	async void OnSettingBtnClick()
+	{
+		HidePanel();
+		await Jyx2_UIManager.Instance.ShowUIAsync(nameof(GameSettingsPanel));
+	}
 
-        for(int i=0;i<ButtonList.Count;i++)
-        {
-            BindListener(ButtonList[i], ActionList[i]);
-        }
-    }
+	async void Quit2MainMenu()
+	{
+		HidePanel();
+		List<string> selectionContent = new List<string>() { "是", "否" };
+		await Jyx2_UIManager.Instance.ShowUIAsync(nameof(ChatUIPanel), ChatType.Selection, "0", "将丢失未保存进度，是否继续？", selectionContent, new Action<int>((index) =>
+		{
+			if (index == 0)
+			{
+				LoadingPanel.Create(null).Forget();
+			}
+		}));
+	}
 
-    void Save()
-    {
-        Jyx2_UIManager.Instance.ShowUI(nameof(SavePanel), new Action<int>((index) => 
-        {
-            var levelMaster = FindObjectOfType<LevelMaster>();
-            levelMaster.OnManuelSave(index);
-        }),"选择存档位");
-    }
-    
-    void Load()
-    {
-        Jyx2_UIManager.Instance.ShowUI(nameof(SavePanel), new Action<int>((index) =>
-        {
-            StoryEngine.DoLoadGame(index);
-        }),"选择读档位");
-    }
-
-    void GraphicSetting()
-    {
-        HidePanel();
-        Jyx2_UIManager.Instance.ShowUI(nameof(GraphicSettingsPanel));
-    }    
-    
-    void Quit2MainMenu()
-    {
-        HidePanel();
-        List<string> selectionContent = new List<string>() { "是(Y)", "否(N)" };
-        Jyx2_UIManager.Instance.ShowUI(nameof(ChatUIPanel), ChatType.Selection, "0", "将丢失未保存进度，是否继续？", selectionContent, new Action<int>((index) =>
-        {
-            if(index == 0)
-            {
-                LoadingPanel.Create(null).Forget();
-            }
-        }));
-    }
-    
-    void HidePanel()
-    {
-        Jyx2_UIManager.Instance.HideUI(nameof(SystemUIPanel));
-    }
+	void HidePanel()
+	{
+		Jyx2_UIManager.Instance.HideUI(nameof(SystemUIPanel));
+	}
 }

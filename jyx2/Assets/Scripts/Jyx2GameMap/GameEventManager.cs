@@ -8,15 +8,9 @@
  * 金庸老先生千古！
  */
 using Jyx2;
-
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
-using UnityEngine.AddressableAssets;
-using UnityEngine.UI;
 
 /// <summary>
 /// 统一管理所有的事件触发
@@ -24,48 +18,31 @@ using UnityEngine.UI;
 public class GameEventManager : MonoBehaviour
 {
     GameEvent curEvent = null;
-    const int NO_EVENT = -1;
 
-    bool isEmptyEvent(GameEvent evt)
+    public bool OnTriggerEvent(GameEvent newEvent)
     {
-        return IsNoEvent(evt.m_EnterEventId) && IsNoEvent(evt.m_InteractiveEventId) && IsNoEvent(evt.m_UseItemEventId);
-    }
-
-    bool isInteractiveOrUseItemEvent(GameEvent evt)
-    {
-        if (evt == null) return false;
-        return !IsNoEvent(evt.m_InteractiveEventId) || !IsNoEvent(evt.m_UseItemEventId);
-    }
-
-    bool isEnterEvent(GameEvent evt)
-    {
-        if (evt == null)
-            return false;
-        return IsNoEvent(evt.m_EnterEventId);
-    }
-
-    public bool OnTriggerEvent(GameEvent evt)
-    {
-        if (isEmptyEvent(evt))
+        if (newEvent == null)
             return false;
 
-        if (evt == curEvent)
+        if (newEvent.IsEmptyEvent)
             return false;
 
-        //如果已经有一个交互事件占位了，并且自己事件不是立刻触发事件，则让一下优先级
-        if (!isEnterEvent(evt) && isInteractiveOrUseItemEvent(curEvent))
+        if (newEvent == curEvent)
             return false;
 
+        //新来的事件优先级更高才触发
+        if (curEvent != null && curEvent.PriorityOrder >= newEvent.PriorityOrder)
+            return false;
 
         //关闭之前的事件
-        if (curEvent != null && curEvent != evt)
+        if (curEvent != null)
         {
             OnExitEvent(curEvent);
         }
 
         //设置当前事件
-        curEvent = evt;
-        return TryTrigger(evt);
+        curEvent = newEvent;
+        return TryTrigger(newEvent);
     }
 
     public void OnExitEvent(GameEvent evt)
@@ -75,12 +52,12 @@ public class GameEventManager : MonoBehaviour
             curEvent = null;
         }
 
-        if (isEmptyEvent(evt))
-        {
+        if (evt.IsEmptyEvent)
             return;
-        }
 
-        UnityTools.DisHighLightObjects(evt.m_EventTargets);
+        if(evt.HasEventTargets)
+            UnityTools.DisHighLightObjects(evt.m_EventTargets);
+
         Jyx2_UIManager.Instance.HideUI(nameof(InteractUIPanel));
     }
 
@@ -98,55 +75,34 @@ public class GameEventManager : MonoBehaviour
     /// <summary>
     /// 显示交互面板
     /// </summary>
-    void ShowInteractUIPanel(GameEvent evt)
+    async void ShowInteractUIPanel(GameEvent evt)
     {
-        var uiParams = new List<object>();
-        int buttonCount = 0;
-        
-        if (!IsNoEvent(evt.m_InteractiveEventId))
-        {
-            uiParams.Add(curEvent.m_InteractiveInfo);
-            uiParams.Add(new Action(() =>
-            {
-                ExecuteJyx2Event(curEvent.m_InteractiveEventId);
-            }));
-            buttonCount++;
-        }
+        if (evt.IsEmptyEvent)
+            return;
 
-        //使用道具
-        if (!IsNoEvent(evt.m_UseItemEventId))
-        {
-            uiParams.Add(curEvent.m_UseItemInfo);
-            uiParams.Add(new Action(() =>
-            {
-                OnClickedUseItemButton();
-            }));
-            buttonCount++;
-        }
+        Action OnInteract = () => ExecuteJyx2Event(curEvent.m_InteractiveEventId);
+        Action OnUseItem = () => OnClickedUseItemButton();
 
-        if (buttonCount == 1)
+        if (evt.IsInteractiveEvent && evt.IsUseItemEvent)
         {
-            Jyx2_UIManager.Instance.ShowUI(nameof(InteractUIPanel), uiParams[0], uiParams[1]);
+            await Jyx2_UIManager.Instance.ShowUIAsync(nameof(InteractUIPanel), GameEvent.InteractText, OnInteract, GameEvent.UseItemText, OnUseItem);
         }
-        else if (buttonCount == 2)
+        else if (evt.IsInteractiveEvent)
         {
-            Jyx2_UIManager.Instance.ShowUI(nameof(InteractUIPanel), uiParams[0], uiParams[1], uiParams[2], uiParams[3]);
+            await Jyx2_UIManager.Instance.ShowUIAsync(nameof(InteractUIPanel), GameEvent.InteractText, OnInteract);
+        }
+        else if(evt.IsUseItemEvent)
+        {
+            await Jyx2_UIManager.Instance.ShowUIAsync(nameof(InteractUIPanel), GameEvent.UseItemText, OnUseItem);
         }
     }
 
-    Button GetUseItemButton()
+
+    async void OnClickedUseItemButton()
     {
-        var root = GameObject.Find("LevelMaster/UI");
-        var btn = root.transform.Find("UseItemButton").GetComponent<Button>();
-        return btn;
-    }
+        if (!curEvent.IsUseItemEvent) return;
 
-
-    void OnClickedUseItemButton()
-    {
-        if (curEvent.m_UseItemEventId == NO_EVENT) return;
-
-        Jyx2_UIManager.Instance.ShowUI(nameof(BagUIPanel), GameRuntimeData.Instance.Items, new Action<int>((itemId) =>
+        await Jyx2_UIManager.Instance.ShowUIAsync(nameof(BagUIPanel), new Action<int>((itemId) =>
         {
             if (itemId == -1) //取消使用
                 return;
@@ -156,37 +112,19 @@ public class GameEventManager : MonoBehaviour
         }));
     }
 
-    public void OnClicked(GameEvent evt)
-    {
-        if (evt.m_InteractiveEventId == NO_EVENT) return;
-
-        curEvent = evt;
-        ExecuteJyx2Event(evt.m_InteractiveEventId);
-    }
-
-
-    bool IsNoEvent(int eventId)
-    {
-        if (eventId == NO_EVENT) return true;
-        if (eventId < 0)
-            return true;
-        return false;
-    }
-
-
     bool TryTrigger(GameEvent evt)
     {
         //直接触发
-        if (!IsNoEvent(evt.m_EnterEventId) && !LuaExecutor.isExcutling())
+        if (evt.IsTriggerEnterEvent && !LuaExecutor.IsExecuting())
         {
             ExecuteJyx2Event(evt.m_EnterEventId);
             return true;
         }
 
         //既没有交互事件，也不是使用道具事件的情况
-        if (IsNoEvent(evt.m_InteractiveEventId) && IsNoEvent(evt.m_UseItemEventId)) return false;
+        if (!evt.IsInteractiveOrUseItemEvent) return false;
 
-        if (evt.m_EventTargets == null || evt.m_EventTargets.Length == 0) return false;
+        if (!evt.HasEventTargets) return false;
 
         //显示交互面板
         ShowInteractUIPanel(evt);
@@ -198,22 +136,32 @@ public class GameEventManager : MonoBehaviour
 
 
 
-    public void ExecuteJyx2Event(int eventId, JYX2EventContext context = null)
+    public void ExecuteJyx2Event(string eventName, JYX2EventContext context = null)
     {
-        if (eventId < 0)
+        int eventId = -1;
+        if (int.TryParse(eventName, out var v))
         {
-            //Debug.LogError("执行错误的luaEvent，id=" + eventId);
+            eventId = v;
+            if (eventId < 0)
+            {
+                //Debug.LogError("执行错误的luaEvent，id=" + eventId);
+                return;
+            }
+        }
+        
+
+        if (GetCurrentGameEvent() != null)
+        {
+            Debug.LogError("错误：在一个事件执行完毕以前不能执行新的事件。");
             return;
         }
 
-        //停止导航
-        var levelMaster = LevelMaster.Instance;
-        if (levelMaster != null)
+        //fix player stop moving after interaction UI confirm
+        if (eventId != 911)
         {
             // fix drag motion continuous move the player when scene is playing
             // modified by eaphone at 2021/05/31
-            levelMaster.SetPlayerCanController(false);
-            levelMaster.StopPlayerNavigation();
+            Jyx2Player.GetPlayer()?.StopPlayerMovement();
         }
         
         SetCurrentGameEvent(curEvent);
@@ -223,20 +171,18 @@ public class GameEventManager : MonoBehaviour
 
         async UniTask ExecuteCurEvent()
         {
-            //if (curEvent != null)
-            //    await curEvent.MarkChest();
-            
             //先判断是否有蓝图类
             //如果有则执行蓝图，否则执行lua
-            var graph = await Jyx2ResourceHelper.LoadEventGraph(eventId);
+            var graph = await Jyx2ResourceHelper.LoadEventGraph(eventName);
             if (graph != null)
             {
                 graph.Run(OnFinishEvent);
             }
             else
             {
-                var eventLuaPath = "jygame/ka" + eventId;
-                Jyx2.LuaExecutor.Execute(eventLuaPath, OnFinishEvent);
+                var eventLuaPath = string.Format(RuntimeEnvSetup.CurrentModConfig.LuaFilePatten, eventName);
+                await Jyx2.LuaExecutor.Execute(eventLuaPath);
+                OnFinishEvent();
             }
         }
 
@@ -248,13 +194,6 @@ public class GameEventManager : MonoBehaviour
         JYX2EventContext.current = null;
 
         SetCurrentGameEvent(null);
-        // fix drag motion continuous move the player when scene is playing
-        // modified by eaphone at 2021/05/31
-        var levelMaster = LevelMaster.Instance;
-        if (levelMaster != null)
-        {
-            levelMaster.SetPlayerCanController(true);
-        }
 
         if (curEvent != null)
         {
@@ -265,7 +204,7 @@ public class GameEventManager : MonoBehaviour
     }
 
     static string _currentEvt;
-    static public void SetCurrentGameEvent(GameEvent evt)
+    public void SetCurrentGameEvent(GameEvent evt)
     {
         if (evt == null)
         {
@@ -276,22 +215,19 @@ public class GameEventManager : MonoBehaviour
             _currentEvt = evt.name;
         }
     }
-    static public GameEvent GetCurrentGameEvent()
+
+    public static GameEvent GetCurrentGameEvent()
     {
         return GetGameEventByID(_currentEvt);
     }
 	
-	static public GameEvent GetGameEventByID(string id)
+	public static GameEvent GetGameEventByID(string id)
 	{
         if (string.IsNullOrEmpty(id))
             return null;
 
-        foreach (var evt in FindObjectsOfType<GameEvent>())
-        {
-            if (evt.name == id)
-                return evt;
-        }
-
-        return null;
+        var allEvents = FindObjectsOfType<GameEvent>();
+        var result = Array.Find(allEvents, element => element.name == id);
+        return result;
 	}
 }

@@ -1,7 +1,9 @@
 using Cinemachine;
 using System;
+using Jyx2;
 using UniRx;
 using UnityEngine;
+using Jyx2.InputCore;
 
 public class CameraHelper : MonoBehaviour
 {
@@ -21,7 +23,7 @@ public class CameraHelper : MonoBehaviour
     public Transform m_BattleCam;
     private CinemachineVirtualCamera _battleVCam;
 
-    public float m_RrotateSpeed = 50f;//旋转速度
+    public float m_RrotateSpeed = 120f;//旋转速度
     public float smoothing = 3;//平滑系数
     private float zoomSpeed = 3f;//缩放速度
 
@@ -43,6 +45,21 @@ public class CameraHelper : MonoBehaviour
     public void BattleFieldLockRole()
     {
         isBattleFieldLockRole = true;
+    }
+
+    private void RotateBattleCam(float xAxis)
+    {
+        if (BattleManager.Instance.IsInBattle)
+        {
+            m_BattleCam.transform.RotateAround(m_BattleCam.position, Vector3.up, Time.deltaTime * m_RrotateSpeed * xAxis * 2);//每帧旋转空物体，相机也跟随旋转
+        }
+        else
+        {
+            if (_freeLook.m_BindingMode == CinemachineTransposer.BindingMode.SimpleFollowWithWorldUp)
+                _freeLook.m_XAxis.Value = Time.deltaTime * m_RrotateSpeed * xAxis;
+            if (_freeLook.m_BindingMode == CinemachineTransposer.BindingMode.WorldSpace)
+                _freeLook.m_Heading.m_Bias = (_freeLook.m_Heading.m_Bias + Time.deltaTime * m_RrotateSpeed * xAxis) % 360;
+        }
     }
 
     private void Start()
@@ -133,31 +150,33 @@ public class CameraHelper : MonoBehaviour
                     //使用鼠标右键
                     if (Input.GetMouseButton(1))
                     {
-                        float nor = Input.GetAxis("Mouse X");//获取鼠标的偏移量
-
-                        //每帧旋转空物体，相机也跟随旋转
-                        if (BattleManager.Instance.IsInBattle)
+                        float xAxis = Input.GetAxis("Mouse X");//获取鼠标的偏移量
+                        RotateBattleCam(xAxis);
+                    }
+                    else
+                    {
+                        float xAxis = 0;
+                        if (Jyx2_Input.GetButton(Jyx2PlayerAction.RotateLeft))
                         {
-                            m_BattleCam.transform.RotateAround(m_BattleCam.position, Vector3.up, Time.deltaTime * m_RrotateSpeed * nor * 2);//每帧旋转空物体，相机也跟随旋转
+                            xAxis -= 1;
                         }
-                        else
+                        if(Jyx2_Input.GetButton(Jyx2PlayerAction.RotateRight))
                         {
-                            if (_freeLook.m_BindingMode == CinemachineTransposer.BindingMode.SimpleFollowWithWorldUp)
-                                _freeLook.m_XAxis.Value = Time.deltaTime * m_RrotateSpeed * nor;
-                            if (_freeLook.m_BindingMode == CinemachineTransposer.BindingMode.WorldSpace)
-                                _freeLook.m_Heading.m_Bias = (_freeLook.m_Heading.m_Bias + Time.deltaTime * m_RrotateSpeed * nor) % 360;
+                            xAxis += 1;
                         }
+                        if (xAxis != 0)
+                            RotateBattleCam(xAxis);
                     }
 
-                    
+
                     //平移
-                    var v = Input.GetAxis("Vertical");
-                    var h = Input.GetAxis("Horizontal");
-                    if(v!=0 || h != 0)
+                    
+                    var input2D = Jyx2_Input.GetAxis2D(Jyx2PlayerAction.CameraMoveX, Jyx2PlayerAction.CameraMoveY);
+                    if (input2D != Vector2.zero)
                     {
                         isBattleFieldLockRole = false;
                         
-                        Vector3 movement = new Vector3(h * 30 * Time.deltaTime, 0f, v * 30 * Time.deltaTime);
+                        Vector3 movement = new Vector3(input2D.x * 30 * Time.deltaTime, 0f, input2D.y * 30 * Time.deltaTime);
 
                         m_BattleCam.Translate(movement);
                     }
@@ -208,6 +227,13 @@ public class CameraHelper : MonoBehaviour
                 }
                 
             });
+        
+        
+        //平滑系数载入
+        if (Math.Abs(GameConst.CAM_SMOOTHING - smoothing) > 0.01)
+        {
+            smoothing = GameConst.CAM_SMOOTHING;
+        }
     }
 
     bool m_CameraInit = false;

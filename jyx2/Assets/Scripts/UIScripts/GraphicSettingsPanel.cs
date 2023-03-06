@@ -7,30 +7,27 @@
  *
  * 金庸老先生千古！
  */
+using Jyx2;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.Rendering.PostProcessing;
 using UnityEngine.UI;
-using Object = System.Object;
-using StylizedWater;
 
-public class GraphicSettingsPanel : Jyx2_UIBase
+public class GraphicSettingsPanel : Jyx2_UIBase,ISettingChildPanel
 {
     public Toggle m_FogToggle;
     public Toggle m_PostToggle;
     public Toggle m_WaterNormalToggle;
     public Toggle m_AntiAliasingToggle;
+    public Toggle m_Vsynctoggle;
 
     public Dropdown m_maxFpsDropdown;
     public Dropdown m_QualityLevelDropdown;
     public Dropdown m_ShaderLodLevelropdown;
     public Dropdown m_ShadowQualityDropdown;
     public Dropdown m_ShadowShowLevelDropdown;
-
-    public Button m_CloseButton;
 
     private GraphicSetting _graphicSetting;
     // Start is called before the first frame update
@@ -44,29 +41,35 @@ public class GraphicSettingsPanel : Jyx2_UIBase
         m_PostToggle.onValueChanged.AddListener(SetPostProcess);
         m_WaterNormalToggle.onValueChanged.AddListener(SetWaterNormal);
         m_AntiAliasingToggle.onValueChanged.AddListener(SetAntiAliasing);
+        m_Vsynctoggle.onValueChanged.AddListener(SetVSync);
 
         m_maxFpsDropdown.onValueChanged.AddListener(DropdownMaxFps);
         m_QualityLevelDropdown.onValueChanged.AddListener(DropdownQualityLevel);
         m_ShaderLodLevelropdown.onValueChanged.AddListener(DropdownShaderLodLevel);
         m_ShadowQualityDropdown.onValueChanged.AddListener(DropdownShadowQuality);
         m_ShadowShowLevelDropdown.onValueChanged.AddListener(DropdownShadowShowLevel);
-
-        m_CloseButton.onClick.AddListener(Close);
     }
 
-    void Close()
+    public void ApplySetting()
     {
+        if (_graphicSetting == null)
+            return;
         _graphicSetting.Save();
         _graphicSetting.Execute();
-        Jyx2_UIManager.Instance.HideUI(nameof(GraphicSettingsPanel));
     }
-    
+
+    public void SetVisibility(bool isVisible)
+    {
+        gameObject.SetActive(isVisible);
+    }
+
     public void InitUI()
     {
         m_FogToggle.isOn = _graphicSetting.HasFog == 1;
         m_PostToggle.isOn = _graphicSetting.HasPost == 1;
         m_WaterNormalToggle.isOn = _graphicSetting.HasWaterNormal == 1;
         m_AntiAliasingToggle.isOn = _graphicSetting.HasAntiAliasing == 1;
+        m_Vsynctoggle.isOn = _graphicSetting.Vsync == 1;
 
         InitDropDown(m_maxFpsDropdown, _graphicSetting.MaxFps, "最大fps");
         InitDropDown(m_QualityLevelDropdown, _graphicSetting.QualityLevel, "图形品质");
@@ -125,7 +128,6 @@ public class GraphicSettingsPanel : Jyx2_UIBase
     {
         var value = SetDropDown(m_ShadowShowLevelDropdown, index, _graphicSetting.ShadowShowLevel);
         if (value == null) return;
-
         _graphicSetting.ShadowShowLevel = (ShadowShowLevelEnum)value;
     }
 
@@ -170,6 +172,11 @@ public class GraphicSettingsPanel : Jyx2_UIBase
 
     public void SetAntiAliasing(bool value) {
         _graphicSetting.HasAntiAliasing = value ? 1 : 0;
+    }
+
+    public void SetVSync(bool value)
+    {
+        _graphicSetting.Vsync = value ? 1 : 0;
     }
 
     protected override void OnCreate()

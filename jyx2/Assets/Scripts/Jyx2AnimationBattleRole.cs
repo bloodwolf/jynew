@@ -27,9 +27,20 @@ namespace Jyx2
             //TODO:判断是否销毁了_animacer，替换模型_animacer不会立即消失……,所以直接每次都get一次
             var animator = GetAnimator();
             _animancer = GameUtil.GetOrAddComponent<HybridAnimancerComponent>(animator.transform);
-            _animancer.Animator = animator;
-            _animancer.Controller = animator.runtimeAnimatorController;
+            
+            if(_animancer.Animator == null)
+                _animancer.Animator = animator;
+            
+            if(_animancer.Controller == null)
+                _animancer.Controller = animator.runtimeAnimatorController;
+            
             return _animancer;
+        }
+
+        protected void InitAnimantionSystem()
+        {
+            GetAnimator();
+            GetAnimancer();
         }
         
         /// <summary>
@@ -128,7 +139,7 @@ namespace Jyx2
             return source.Task;
         }
         
-        public void PlayAnimation(AnimationClip clip, Action callback = null, float fadeDuration = 0f)
+        public void PlayAnimation(AnimationClip clip, Action callback = null, float fadeDuration = 0.25f)
         {
             if (clip == null)
             {
@@ -138,7 +149,7 @@ namespace Jyx2
             }
             
             var animancer = GetAnimancer();
-            animancer.Stop();
+            //animancer.Stop(); 让动画自己过渡就行 暂时注掉
 
             //检查动作配置是否正确
             if (clip.isLooping && callback != null)
@@ -150,19 +161,19 @@ namespace Jyx2
                 Debug.LogError($"动作没设置LOOP但是没有回调！请检查{clip.name}");
             }
             
-            var state = animancer.Play(clip, 0.25f);
+            var state = animancer.Play(clip, fadeDuration);
 
             if (callback != null)
             {
                 if (fadeDuration > 0)
                 {
-                    GameUtil.CallWithDelay(state.Duration - fadeDuration, callback);
+                    GameUtil.CallWithDelay(state.Duration + fadeDuration, callback, this);
                 }
                 else
                 {
                     state.Events.OnEnd = () =>
                     {
-                        state.Stop();
+                        //state.Stop(); 为了让动画自然过渡就暂时注掉了
                         callback();
                     };
                 }

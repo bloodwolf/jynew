@@ -8,19 +8,16 @@
  * 金庸老先生千古！
  */
 using System;
+using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
+using i18n.TranslatorDef;
 using Jyx2;
-using Jyx2Configs;
 using NUnit.Framework;
 using Sirenix.OdinInspector;
 using UnityEngine;
 
 public class MapTeleportor : MonoBehaviour
-{	
-	[Required]
-	[LabelText("对应地图")]
-	public Jyx2ConfigMap m_GameMap;
-
+{
 	[InfoBox("对应指定场景的Level/Triggers下节点")]
 	[LabelText("传送的位置名")] 
 	public string TransportTriggerName;
@@ -36,18 +33,33 @@ public class MapTeleportor : MonoBehaviour
 
 	private async void Start()
 	{
-		await BeforeSceneLoad.loadFinishTask;
-
-		await UniTask.Delay(TimeSpan.FromSeconds(1f)); //等1秒再生效
+		await RuntimeEnvSetup.Setup();
 		triggerEnabled = true;
 	}
 
 	private bool triggerEnabled = false;
 
-	void OnTriggerEnter(Collider other)
+	async void OnTriggerEnter(Collider other)
 	{
 		if (!triggerEnabled) return;
-		ShowEnterButton(m_GameMap.Id, TransportTriggerName, ButtonText);
+		
+		int transportMapId = -1;
+		if (LevelMaster.GetCurrentGameMap().Tags.Contains("WORLDMAP"))
+		{
+			transportMapId = LuaToCsBridge.MapTable[0].GetMapByName(this.gameObject.name).Id;
+		}
+                else
+                {
+                    transportMapId = LuaToCsBridge.MapTable[LevelMaster.GetCurrentGameMap().GetTransportToMapValue(this.gameObject.name)].Id;
+                }
+		//---------------------------------------------------------------------------
+		//await ShowEnterButton(LevelMaster.GetCurrentGameMap().TransportToMap, TransportTriggerName, ButtonText);
+		//---------------------------------------------------------------------------
+		//特定位置的翻译【地图传送按钮的文本显示，一般为离开】
+		//---------------------------------------------------------------------------
+		await ShowEnterButton(transportMapId, TransportTriggerName, ButtonText.GetContent(nameof(MapTeleportor)));
+		//---------------------------------------------------------------------------
+		//---------------------------------------------------------------------------
 		UnityTools.HighLightObjects(m_EventTargets, Color.red);
 	}
 
@@ -68,11 +80,18 @@ public class MapTeleportor : MonoBehaviour
 
 		var runtime = GameRuntimeData.Instance;
 		var key = runtime.GetSceneEntranceCondition(mapId);
+		
+		if (key == -1)
+		{
+			return true;
+		}
+		
 		if (key == 0)
 		{
 			return true;
 		}
-		else if (key == 2)
+
+		if (key == 2)
 		{
 			foreach (var role in runtime.GetTeam())
 			{
@@ -83,11 +102,11 @@ public class MapTeleportor : MonoBehaviour
 		return false;
 	}
 
-	void ShowEnterButton(int transportMapId, string transportTriggerName, string showText)
+	async UniTask ShowEnterButton(int transportMapId, string transportTriggerName, string showText)
 	{
 		if (!CheckCanEnterMap(transportMapId))
 		{
-			GameUtil.DisplayPopinfo("目前还不能进入");
+			//GameUtil.DisplayPopinfo("目前还不能进入");
 			return;
 		}
 		
@@ -96,10 +115,7 @@ public class MapTeleportor : MonoBehaviour
 			showText = "进入";
 		}
 
-		Jyx2_UIManager.Instance.ShowUI(nameof(InteractUIPanel), showText, new Action(() =>
-		{
-			DoTransport();
-		}));
+		await Jyx2_UIManager.Instance.ShowUIAsync(nameof(InteractUIPanel), showText, new Action(DoTransport));
 	}
 
 	public void DoTransport()
@@ -108,7 +124,19 @@ public class MapTeleportor : MonoBehaviour
 			
 		Assert.IsNotNull(curMap);
 
-		var nextMap = m_GameMap;
+		var nextMap = LuaToCsBridge.MapTable[0];
+
+		if (curMap.Tags.Contains("WORLDMAP"))
+		{
+			nextMap = nextMap.GetMapByName(this.gameObject.name);
+			//记录当前世界位置
+			Jyx2Player.GetPlayer().RecordWorldInfo();
+		}
+
+		else
+		{
+			nextMap = LuaToCsBridge.MapTable[curMap.GetTransportToMapValue(this.gameObject.name)];
+		}
 
 		if (nextMap == null)
 		{
@@ -118,22 +146,16 @@ public class MapTeleportor : MonoBehaviour
 			
 		//记录当前地图
 		LevelMaster.LastGameMap = curMap;
-			
-		//记录当前世界位置
-		if (curMap.IsWorldMap())
-		{
-			Jyx2Player.GetPlayer().RecordWorldInfo();
-		}
 
 		LevelMaster.LevelLoadPara para = new LevelMaster.LevelLoadPara();
 		para.loadType = LevelMaster.LevelLoadPara.LevelLoadType.StartAtTrigger;
 		if (!string.IsNullOrEmpty(TransportTriggerName))
 		{
 			para.triggerName = TransportTriggerName;
-		}else if (curMap.IsWorldMap())
+		}else if (curMap.Tags.Contains("WORLDMAP"))
 		{
 			para.triggerName = "Leave";
-		}else if (nextMap.IsWorldMap())
+		}else if (nextMap.Tags.Contains("WORLDMAP"))
 		{
 			para.triggerName = curMap.Name;
 		}
@@ -145,6 +167,10 @@ public class MapTeleportor : MonoBehaviour
 		}
 			
 		//开始加载
-		LevelLoader.LoadGameMap(nextMap, para);
+		LevelLoader.LoadGameMap(nextMap, para, () =>
+		{
+			var player = LevelMaster.Instance.GetPlayer();
+			player?.OnSceneLoad().Forget();
+		});
 	}
 }

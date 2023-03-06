@@ -12,7 +12,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
-
+using i18n.TranslatorDef;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -22,12 +22,21 @@ using UnityEngine.UI;
 /// </summary>
 public class GameEvent : MonoBehaviour
 {
+    public enum EventPriority
+    {
+        Lowest = 1 << 1,
+
+        //以后如果有其他的在中间拓展
+
+        Highest = 1 << 30,
+    }
+
     static public GameEvent GetCurrentGameEvent()
     {
         return GameEventManager.GetCurrentGameEvent();
     }
 
-    public const int NO_EVENT = -1;
+    private const string NO_EVENT = "-1";
 
     /// <summary>
     /// 交互对象
@@ -37,34 +46,48 @@ public class GameEvent : MonoBehaviour
     /// <summary>
     /// 交互事件
     /// </summary>
-    public int m_InteractiveEventId = NO_EVENT;
+    public string m_InteractiveEventId = NO_EVENT;
 
     /// <summary>
     /// 使用物品事件
     /// </summary>
-    public int m_UseItemEventId = NO_EVENT;
+    public string m_UseItemEventId = NO_EVENT;
 
     /// <summary>
     /// 经过事件
     /// </summary>
-    public int m_EnterEventId = NO_EVENT;
+    public string m_EnterEventId = NO_EVENT;
 
     /// <summary>
     /// 交互提示按钮文字
     /// </summary>
-    public string m_InteractiveInfo = "交互";
+    //---------------------------------------------------------------------------
+    //public string m_InteractiveInfo = "交互";
+    //---------------------------------------------------------------------------
+    //特定位置的翻译【交互提示按钮文字】
+    //---------------------------------------------------------------------------
+    public static string InteractText => "交互".GetContent(nameof(GameEvent));
+    //---------------------------------------------------------------------------
+    //---------------------------------------------------------------------------
 
     /// <summary>
     /// 使用物品按钮文字
     /// </summary>
-    public string m_UseItemInfo = "使用物品";
+    //---------------------------------------------------------------------------
+    //public string m_UseItemInfo = "使用物品";
+    //---------------------------------------------------------------------------
+    //特定位置的翻译【使用物品按钮文字】
+    //---------------------------------------------------------------------------
+    public static string UseItemText => "使用物品".GetContent(nameof(GameEvent));
+    //---------------------------------------------------------------------------
+    //---------------------------------------------------------------------------
 
     /// <summary>
     /// 交互物体的最小距离
     /// </summary>
     const float EVENT_TRIGGER_DISTANCE = 4;
 
-    GameEventManager evtManager
+    GameEventManager gameEventManager
     {
         get
         {
@@ -78,127 +101,78 @@ public class GameEvent : MonoBehaviour
 
     GameEventManager _evtManager;
 
+    public bool IsTriggerEnterEvent => IsValidEvent(m_EnterEventId);
+
+    public bool IsUseItemEvent => IsValidEvent(m_UseItemEventId);
+
+    public bool IsInteractiveEvent => IsValidEvent(m_InteractiveEventId);
+
+    public bool IsInteractiveOrUseItemEvent => IsInteractiveEvent || IsUseItemEvent;
+
+    public bool IsEmptyEvent => !IsUseItemEvent && !IsInteractiveEvent && !IsTriggerEnterEvent;
+
+    public int PriorityOrder
+    {
+        get
+        {
+            int result = 0;
+            if (IsTriggerEnterEvent)
+                result |= (int)EventPriority.Highest;
+            if (IsInteractiveOrUseItemEvent)
+                result |= (int)EventPriority.Lowest;
+            return result;
+        }
+    }
+
+
+    public bool HasEventTargets => m_EventTargets != null && m_EventTargets.Length > 0;
+
+
+    private bool IsValidEvent(string eventId)
+    {
+        if (eventId == NO_EVENT)
+            return false;
+        if (int.TryParse(eventId, out var v))
+        {
+            if (v < 0) return false;
+        }
+        return true;
+    }
+
 
     public void Init()
     {
-        //如果有可交互事件，并且有绑定可交互物体。把这些物体设置为交互对象
-        if(m_UseItemEventId != NO_EVENT || m_InteractiveEventId != NO_EVENT)
-        {
-            if(m_EventTargets != null && m_EventTargets.Length > 0)
-            {
-                foreach(var obj in m_EventTargets)
-                {
-                    if(obj != null && obj.GetComponent<InteractiveObj>() == null)
-                    {
-                        var interactiveObject = obj.AddComponent<InteractiveObj>();
-                        interactiveObject.SetMouseClickCallback(OnClickTarget);
-                    }
-                }
-            }
-        }
-
-        //否则清空该物体的可交互属性
-        if(m_UseItemEventId == NO_EVENT && m_InteractiveEventId == NO_EVENT)
-        {
-            foreach (var obj in m_EventTargets)
-            {
-                if (obj == null) continue;
-                var o = obj.GetComponent<InteractiveObj>();
-                if(o != null)
-                {
-                    GameObject.Destroy(o);
-                }
-            }
-        }
+        //不再需要直接点击物体交互了，因此InteractiveObj就没必要初始化了 by 0kk470
     }
 
-    void OnClickTarget(InteractiveObj target)
+    private bool IsPlayerEntered(Collider collider)
     {
-        //BY CGGG 2021/6/9，已经修改为面朝向射线触发，不会再需要鼠标点击
-        //DO NOTHING
-
-        return;
-        if (EventSystem.current.IsPointerOverGameObject())
-            return;
-
-        if (Jyx2Player.GetPlayer().IsOnBoat)
-            return;
-
-        //先判断角色是否已经足够近了
-        var levelMaster = LevelMaster.Instance;
-        if (levelMaster == null)
-        {
-            Debug.LogError("LevelMaster is NULL! but click target triggered.");
-            return;
-        }
-
-        if((levelMaster.GetPlayerPosition() - target.transform.position).magnitude > EVENT_TRIGGER_DISTANCE)
-        {
-            StoryEngine.Instance.DisplayPopInfo("我需要离得更近一些");
-            return;
-        }
-
-        evtManager.OnClicked(this);
+        var player = Jyx2Player.GetPlayer();
+        if (player == null || collider.gameObject != player.gameObject)
+            return false;
+        return true;
     }
 
-
-    void OnTriggerStay(Collider other)
-    {
-        
-    }
 
     void OnTriggerEnter(Collider other)
     {
-        if (LevelMaster.Instance == null || LevelMaster.Instance.IsInited == false)
+        if (LevelMaster.Instance == null)
+            return;
+
+        if (!LevelMaster.Instance.IsInited)
             return;
         
         //只保留进入触发事件
-        if (this.m_EnterEventId == NO_EVENT)
+        if (!IsTriggerEnterEvent)
             return;
 
-        var player = Jyx2Player.GetPlayer();
-        if (player == null || other.gameObject != player.gameObject)
+        if (!IsPlayerEntered(other))
             return;
-        
-        evtManager.OnTriggerEvent(this);
+
+        if (gameEventManager == null)
+            return;
+        gameEventManager.OnTriggerEvent(this);
     }
-
-    
-    /*
-    void OnTriggerStay(Collider other)
-    {
-        if (EventSystem.current.IsPointerOverGameObject())
-            return;
-
-        if (Jyx2Player.GetPlayer().IsOnBoat)
-            return;
-
-        //这里只触发非交互类事件
-        if (this.m_EnterEventId != NO_EVENT)
-        {
-            evtManager.OnTriggerEvent(this);
-        }
-    }
-
-    void OnTriggerEnter(Collider other)
-    {
-        if (EventSystem.current.IsPointerOverGameObject())
-            return;
-
-        if (Jyx2Player.GetPlayer().IsOnBoat)
-            return;
-
-        //这里只触发非交互类事件
-        if (this.m_EnterEventId != NO_EVENT)
-        {
-            evtManager.OnTriggerEvent(this);
-        }
-    }
-
-    void OnTriggerExit(Collider other)
-    {
-        evtManager.OnExitEvent(this);
-    }*/
 
 
     public async UniTask MarkChest()
@@ -210,7 +184,7 @@ public class GameEvent : MonoBehaviour
             if (chest != null)
             {
 				//使用物品事件为-1时可以直接打开。>0时候需要对应钥匙才能解开。-2时不能打开，参考南贤居宝箱一开始不能打开，交谈后可以直接打开
-                chest.ChangeLockStatus(m_UseItemEventId != -1);
+                chest.ChangeLockStatus(m_UseItemEventId != NO_EVENT);
                 await chest.MarkAsOpened();
             }
         }

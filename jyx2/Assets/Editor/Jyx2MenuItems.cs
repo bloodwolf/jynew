@@ -4,11 +4,10 @@ using System.Net;
 using System.Threading;
 using CSObjectWrapEditor;
 using DG.DemiLib;
-
+using Jyx2.MOD;
 using UnityEngine;
 using UnityEditor;
-using UnityEditor.AddressableAssets;
-using UnityEditor.AddressableAssets.Settings;
+
 #if UNITY_STANDALONE_OSX
 using UnityEditor.OSXStandalone;
 #endif
@@ -18,10 +17,11 @@ namespace Jyx2Editor
 {
     public class Jyx2MenuItems
     {
+        
         [MenuItem("项目快速导航/技能编辑器")]
         private static void OpenSkillEditor()
         {
-            SceneHelper.StartScene("Assets/Jyx2BattleScene/Jyx2SkillEditor.unity");
+            SceneHelper.StartScene("Assets/Jyx2Tools/Jyx2SkillEditor.unity");
         }
 
         [MenuItem("项目快速导航/全模型预览")]
@@ -75,7 +75,7 @@ namespace Jyx2Editor
         [MenuItem("项目快速导航/资源/道具图标")]
         private static void OpenItemsMenu()
         {
-            NavigateToPath("Assets/BuildSource/Jyx2Items/0.png");
+            NavigateToPath("Assets/BuildSource/Items/0.png");
         }
 
         [MenuItem("项目快速导航/资源/音乐")]
@@ -97,128 +97,5 @@ namespace Jyx2Editor
             EditorGUIUtility.PingObject(obj);
         }
 
-        [MenuItem("一键打包/Windows64")]
-        private static void BuildWindows64()
-        {
-            //BUILD
-            string path = EditorUtility.SaveFolderPanel("选择打包输出目录", "", "jyx2Win64Build");
-
-            EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTarget.StandaloneWindows64);
-
-
-            if (string.IsNullOrEmpty(path))
-                return;
-
-            //重新生成Addressable相关文件
-            AddressableAssetSettings.BuildPlayerContent();
-
-            string currentDate = DateTime.Now.ToString("yyyyMMdd");
-
-            //设置版本号
-            PlayerSettings.bundleVersion = currentDate;
-            
-            //exe路径
-            string exePath = path + $"/jynew.exe";
-
-            //打包
-            BuildPipeline.BuildPlayer(GetScenePaths(), exePath, BuildTarget.StandaloneWindows64, BuildOptions.None);
-
-            EditorUtility.DisplayDialog("打包完成", "输出目录:" + path, "确定");
-        }
-
-
-        static string[] GetScenePaths()
-        {
-            return new string[] {"Assets/0_GameStart.unity", "Assets/0_MainMenu.unity"};
-        }
-
-        [MenuItem("一键打包/Android")]
-        private static void BuildAndroid()
-        {
-            if (!EditorUtility.DisplayDialog("重要提示",
-                "请先手动运行xLua/Generate Code，再执行本指令，否则可能打包出来黑屏", "继续!", "取消"))
-                return;
-
-            //BUILD
-            string path = EditorUtility.SaveFolderPanel("选择打包输出目录", "", "");
-
-            try
-            {
-                EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTarget.Android);
-
-                if (string.IsNullOrEmpty(path))
-                    return;
-                
-                //重新生成Addressable相关文件
-                AddressableAssetSettings.BuildPlayerContent();
-
-                string currentDate = DateTime.Now.ToString("yyyyMMdd");
-                string apkPath = path + $"/jyx2AndroidBuild-{currentDate}.apk";
-
-                //设置版本号
-                PlayerSettings.bundleVersion = currentDate;
-
-                //动态设置keystore的密码
-                PlayerSettings.Android.keystorePass = "123456";
-                PlayerSettings.Android.keyaliasPass = "123456";
-
-                //打包
-                BuildPipeline.BuildPlayer(GetScenePaths(), apkPath, BuildTarget.Android, BuildOptions.None);
-
-                EditorUtility.DisplayDialog("打包完成", "输出文件:" + apkPath, "确定");
-                
-                AssetDatabase.Refresh();
-            }
-            catch (Exception e)
-            {
-                EditorUtility.DisplayDialog("打包出错", e.ToString(), "确定");
-                Debug.LogError(e.StackTrace);
-            }
-        }
-
-        [MenuItem("一键打包/MacOS")]
-        private static void BuildMacOS()
-        {
-            if (!EditorUtility.DisplayDialog("重要提示",
-                "请先手动运行xLua/Generate Code，再执行本指令，否则可能打包出来黑屏", "继续!", "取消"))
-                return;
-
-            //BUILD
-            string path = EditorUtility.SaveFolderPanel("选择打包输出目录", "", "");
-
-            try
-            {
-                EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTarget.StandaloneOSX);
-
-#if UNITY_STANDALONE_OSX
-                //支持m1芯片
-                UnityEditor.OSXStandalone.UserBuildSettings.architecture = MacOSArchitecture.x64ARM64;
-#endif
-
-                if (string.IsNullOrEmpty(path))
-                    return;
-
-                //重新生成Addressable相关文件
-                AddressableAssetSettings.BuildPlayerContent();
-
-                string currentDate = DateTime.Now.ToString("yyyyMMdd");
-                string outputPath = path + $"/jyxOSXBuild-{currentDate}.app";
-
-                //设置版本号
-                PlayerSettings.bundleVersion = currentDate;
-
-                //打包
-                BuildPipeline.BuildPlayer(GetScenePaths(), outputPath, BuildTarget.StandaloneOSX,BuildOptions.None);
-
-                EditorUtility.DisplayDialog("打包完成", "输出文件:" + outputPath, "确定");
-
-                AssetDatabase.Refresh();
-            }
-            catch (Exception e)
-            {
-                EditorUtility.DisplayDialog("打包出错", e.ToString(), "确定");
-                Debug.LogError(e.StackTrace);
-            }
-        }
     }
 }

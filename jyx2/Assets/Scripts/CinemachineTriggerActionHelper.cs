@@ -33,29 +33,14 @@ public class CinemachineTriggerActionHelper : UIBehaviour
     //接受的trigger名字
     public List<string> m_AcceptColliderNames;
 
-    bool IsGameObjectAccept(GameObject obj)
-    {
-        if (!enabled) return false;
-        if (obj == null) return false;
-
-        if (m_AcceptColliderNames == null || m_AcceptColliderNames.Count == 0)
-        {
-            return obj == GameRuntimeData.Instance.Player.View.gameObject;
-        }
-        else
-        {
-            return m_AcceptColliderNames.Contains(obj.name);
-        }
-    }
 
     void OnTriggerEnter(Collider other)
     {
         if (!enabled) return;
         if (enterLockDirection)
         {
-            LevelMaster levelMaster = GameObject.FindObjectOfType<LevelMaster>();
             //开启方向锁
-            levelMaster.m_IsLockingDirection = true;
+            LockPlayerDirection();
         }
         if(m_UnlockTarget)
         {
@@ -77,9 +62,8 @@ public class CinemachineTriggerActionHelper : UIBehaviour
         if (!enabled) return;
         if (exitLockDirection)
         {
-            LevelMaster levelMaster = GameObject.FindObjectOfType<LevelMaster>();
             //开启方向锁
-            levelMaster.m_IsLockingDirection = true;
+            LockPlayerDirection();
         }
         if (m_UnlockTarget)
         {
@@ -88,6 +72,13 @@ public class CinemachineTriggerActionHelper : UIBehaviour
                 vcam.Follow = old_followTarget;
             }
         }
+    }
+
+    private void LockPlayerDirection()
+    {
+        var playerMovement = LevelMaster.Instance?.GetPlayer().GetComponent<Jyx2_PlayerMovement>();
+        if (playerMovement != null)
+            playerMovement.IsLockingDirection = true;
     }
 
     IEnumerator CallWithDelay(Action action, float time)

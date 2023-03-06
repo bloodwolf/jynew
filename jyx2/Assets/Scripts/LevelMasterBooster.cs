@@ -13,29 +13,24 @@ using Cysharp.Threading.Tasks;
 
 using Jyx2;
 using Jyx2.Middleware;
-using Jyx2Configs;
+using Jyx2.MOD;
+using Jyx2.ResourceManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Sirenix.OdinInspector;
 
 public class LevelMasterBooster : MonoBehaviour
 {
-
     [LabelText("模拟移动端")] public bool m_MobileSimulate;
-
-    [InfoBox("不允许设置所属地图，因为当前是战斗地图", InfoMessageType.Error, "@this.m_GameMap != null && this.m_IsBattleMap")]
-    [LabelText("所属地图")]
-    [InfoBox("仅用于在本场景启动调试时参考使用")]
-    [HideIf("@this.m_IsBattleMap")]
-    public Jyx2ConfigMap m_GameMap;
 
     [LabelText("战斗地图")] public bool m_IsBattleMap = false;
     
-    GameRuntimeData runtime { get { return GameRuntimeData.Instance; } }
+    
+    private GameRuntimeData runtime => GameRuntimeData.Instance;
 
     private async void Awake()
     {
-        await BeforeSceneLoad.loadFinishTask;
+        await RuntimeEnvSetup.Setup();
 
         //实例化LevelMaster
         LevelMaster levelMaster = Jyx2ResourceHelper.CreatePrefabInstance(ConStr.LevelMaster).GetComponent<LevelMaster>();
@@ -44,15 +39,16 @@ public class LevelMasterBooster : MonoBehaviour
         levelMaster.transform.SetParent(transform, false);
         levelMaster.MobileSimulate = m_MobileSimulate;
 
-        if (LevelMaster.GetCurrentGameMap() == null && m_GameMap != null)
+        if (LevelMaster.GetCurrentGameMap() == null)
         {
-            LevelMaster.SetCurrentMap(m_GameMap);
+            var gameMap = LuaToCsBridge.MapTable[0].GetMapBySceneName(SceneManager.GetActiveScene().name);
+            LevelMaster.SetCurrentMap(gameMap);
         }
     }
 
     private async void Start()
     {
-        await BeforeSceneLoad.loadFinishTask;
+        await RuntimeEnvSetup.Setup();
 
         if (GameRuntimeData.Instance == null)
         {
@@ -69,7 +65,7 @@ public class LevelMasterBooster : MonoBehaviour
         }
 
         //设置所有的场景变更
-        RefreshSceneObjects();
+        await RefreshSceneObjects();
 
 
         //所有改变的物体
@@ -78,7 +74,7 @@ public class LevelMasterBooster : MonoBehaviour
             obj.Reload();
         }
         
-        Jyx2_UIManager.Instance.ShowMainUI();
+        await Jyx2_UIManager.Instance.ShowMainUI();
     }
 
     public void ReplaceSceneObject(string scene, string path, string replace)
@@ -122,7 +118,7 @@ public class LevelMasterBooster : MonoBehaviour
         //如果是当前场景
         if (string.IsNullOrEmpty(scene))
         {
-            RefreshSceneObjects();
+            RefreshSceneObjects().Forget();
         }
     }
 
@@ -132,7 +128,7 @@ public class LevelMasterBooster : MonoBehaviour
         return battleLoader != null;
     }
 
-    public void RefreshSceneObjects()
+    public async UniTask RefreshSceneObjects()
     {
         if (IsBattle())
             return;
@@ -184,8 +180,8 @@ public class LevelMasterBooster : MonoBehaviour
 
                 try
                 {
-                    Jyx2ResourceHelper.LoadAsset<RuntimeAnimatorController>(animationControllerPath,
-                        rst => { animator.runtimeAnimatorController = rst; });
+                    animator.runtimeAnimatorController =
+                        await ResLoader.LoadAsset<RuntimeAnimatorController>(animationControllerPath);
                 }
                 catch
                 {

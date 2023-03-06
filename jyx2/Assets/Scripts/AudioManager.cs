@@ -11,8 +11,8 @@
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
-using UnityEngine.AddressableAssets;
 using Jyx2.MOD;
+using Jyx2.ResourceManagement;
 
 public class AudioManager
 {
@@ -20,25 +20,9 @@ public class AudioManager
     public static void PlayMusic(int id)
     {
         Init();
+        if (id == -1)
+            return;
         PlayMusicAtPath("Assets/BuildSource/Musics/" + id + ".mp3").Forget();
-    }
-
-    public static bool PlayMusic(AssetReference asset)
-    {
-        Init();
-        if (string.IsNullOrEmpty(asset.AssetGUID))
-            return false;
-        DoPlayMusic(asset).Forget();
-        return true;
-    }
-
-    private static async UniTask DoPlayMusic(AssetReference asset)
-    {
-        var audioClip = await Addressables.LoadAssetAsync<AudioClip>(asset);
-        if (audioClip != null)
-        {
-            PlayMusic(audioClip);
-        }
     }
 
     public static void PlayMusic(AudioClip audioClip)
@@ -47,7 +31,16 @@ public class AudioManager
         if (audioClip != bgmAudioSource.clip)
         {
             bgmAudioSource.clip = audioClip;
-            bgmAudioSource.Play();    
+            bgmAudioSource.Play();
+        }
+    }
+
+    public static void StopMusic()
+    {
+        Init();
+        if (bgmAudioSource != null)
+        {
+            bgmAudioSource.Stop();
         }
     }
 
@@ -59,24 +52,14 @@ public class AudioManager
             return;
         }
 
-        if(_currentPlayMusic == path)
-        {
-            return;
-        }
-
-  /*      var audioClip = await Addressables.LoadAssetAsync<AudioClip>(path).Task;*/
-
-        var audioClip = await MODLoader.LoadAsset<AudioClip>(path);
+        var audioClip = await ResLoader.LoadAsset<AudioClip>(path);
 
         if (audioClip != null)
         {
             bgmAudioSource.clip = audioClip;
             bgmAudioSource.Play();
-            _currentPlayMusic = path;
         }
     }
-
-    private static string _currentPlayMusic;
 
     private static AudioSource _bgmAudioSource = null;
 
@@ -102,14 +85,11 @@ public class AudioManager
     {
         if (_hasInitialized)
             return;
-        
+        //音效初始化可能会在游戏设置前，这里需要先初始化下游戏设置
+        GameSettingManager.Init();
         GameSettingManager.SubscribeEnforceEvent(
-            GameSettingManager.Catalog.Volume, (volume) =>
-            {
-                bgmAudioSource.volume = (float)volume; 
-            }, 
+            GameSettingManager.Catalog.Volume, (volume) => { bgmAudioSource.volume = (float)volume; },
             true);
-        
         _hasInitialized = true;
     }
 
@@ -125,11 +105,12 @@ public class AudioManager
         var soundEffectVolume = GameSettingManager.settings[GameSettingManager.Catalog.SoundEffect];
         AudioSource.PlayClipAtPoint(clip, position, (float)soundEffectVolume);
     }
+
     public static async UniTask PlayClipAtPoint(string path, Vector3 position)
     {
         Init();
         var soundEffectVolume = GameSettingManager.settings[GameSettingManager.Catalog.SoundEffect];
-        var clip = await MODLoader.LoadAsset<AudioClip>(path);
+        var clip = await ResLoader.LoadAsset<AudioClip>(path);
         AudioSource.PlayClipAtPoint(clip, position, (float)soundEffectVolume);
     }
 }

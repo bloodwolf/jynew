@@ -8,23 +8,50 @@
  * 金庸老先生千古！
  */
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Sirenix.OdinInspector;
 #if UNITY_EDITOR
 using UnityEditor;
 using UnityEditor.SceneManagement;
 #endif
 using UnityEngine;
+using Cysharp.Threading.Tasks;
+using Jyx2.Middleware;
+using Tools = Jyx2.Middleware.Tools;
 
 namespace Jyx2
 {
     [CreateAssetMenu(fileName = "NewModelAsset", menuName = "金庸重制版/角色模型配置文件Model Asset")]
     public class ModelAsset : ScriptableObject
     {
-        [BoxGroup("数据", false)]
+        public static IList<ModelAsset> All;
+    
+        public static ModelAsset Get(string roleName)
+        {
+            try
+            {
+                return All.Single(r => r.name == roleName);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"{roleName}的模型资源找不到，随便挑选一个。。");
+                Debug.LogException(e);
+                return Tools.GetRandomElement(All); //出错了，随便返回一个
+            }
+            
+        }
+
+        [BoxGroup("数据")] [Header("模型")]
         [InlineEditor(InlineEditorModes.LargePreview, Expanded = true)]
         [OnValueChanged("AutoBindModelData")]
         public GameObject m_View;
+
+        public async UniTask<GameObject> GetView()
+        {
+            return m_View;
+        }
 
         [BoxGroup("数据")] [Header("剑")] [SerializeReference]
         public SwordPart m_SwordWeapon;

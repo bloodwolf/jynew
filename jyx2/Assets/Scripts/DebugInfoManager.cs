@@ -15,15 +15,16 @@ using UnityEngine.UI;
 
 public class DebugInfoManager : MonoBehaviour
 {
-    static public void Init()
+    public static void Init()
     {
-        var obj = GameObject.Find("DebugInfoManager");
+        var obj = FindObjectOfType<DebugInfoManager>();
         if (obj != null)
             return;
 
         //否则初始化
         var prefab = Resources.Load<GameObject>("DebugInfoManager");
         var newObj = Instantiate(prefab) as GameObject;
+        newObj.name = "[DebugInfoManager]";
         DontDestroyOnLoad(newObj);
     }
 
@@ -43,14 +44,7 @@ public class DebugInfoManager : MonoBehaviour
             frames = 0;
             lastInterval = timeNow;
         }
-        m_FpsText.text = "FPS=" + string.Format("{0:f2}", fps);
-    }
-
-
-    // Start is called before the first frame update
-    void Start()
-    {
-        
+        m_FpsText.text = string.Format("FPS={0:f2}", fps);
     }
 
     // Update is called once per frame

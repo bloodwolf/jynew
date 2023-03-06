@@ -13,12 +13,10 @@ using Animancer;
 
 using UnityEngine;
 using Jyx2;
-using Jyx2Configs;
-
 
 public class Jyx2SkillEditorEnemy : Jyx2AnimationBattleRole
 {
-    public int SkillId;
+    //public int SkillId;
     
     Animator animator;
 
@@ -30,16 +28,11 @@ public class Jyx2SkillEditorEnemy : Jyx2AnimationBattleRole
     // Start is called before the first frame update
     async void Start()
     {
-        await BeforeSceneLoad.loadFinishTask;
+        await RuntimeEnvSetup.Setup();
         
         animator = GetComponent<Animator>();
-        Jyx2ConfigSkill skill = GameConfigDatabase.Instance.Get<Jyx2ConfigSkill>(SkillId.ToString());
-        var wugong = new SkillInstance(SkillId);
-
-        var display = wugong.GetDisplay();
-        this.CurDisplay = display;
-
         this.Idle();
     }
-
 }
+
+

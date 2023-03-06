@@ -15,8 +15,8 @@ GameObject:
   m_Name: Sark_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
+  m_NavMeshLayer: 1
+  m_StaticEditorFlags: 8
   m_IsActive: 1
 --- !u!4 &6968781666460516671
 Transform:
@@ -90,10 +90,8 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 5093329469997743443}
-  - component: {fileID: 222633695}
   - component: {fileID: 8522751351285850189}
   - component: {fileID: 6877049991955894382}
-  - component: {fileID: 6441496388134050884}
   m_Layer: 0
   m_Name: Sark_1
   m_TagString: Untagged
@@ -117,22 +115,6 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: -90.00001, y: 0, z: 180.256}
---- !u!208 &222633695
-NavMeshObstacle:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6923872431525625808}
-  m_Enabled: 1
-  serializedVersion: 3
-  m_Shape: 1
-  m_Extents: {x: 0.44200003, y: 0.344, z: 0.388}
-  m_MoveThreshold: 0.1
-  m_Carve: 0
-  m_CarveOnlyStationary: 1
-  m_Center: {x: 0.006, y: 0.38, z: -0.01}
-  m_TimeToStationary: 0.5
 --- !u!95 &8522751351285850189
 Animator:
   serializedVersion: 3
@@ -165,19 +147,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   clip: {fileID: 1827226128182048838, guid: b9431bf6c713ca945b2061c00376ecf0, type: 3}
---- !u!114 &6441496388134050884
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6923872431525625808}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f13f42112a552354988a63573e49f5d2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  prefabPrototype: {fileID: 11400000, guid: 679f807f32a214b43a809abe4a2ff950, type: 2}
 --- !u!1 &7763500541394622079
 GameObject:
   m_ObjectHideFlags: 0

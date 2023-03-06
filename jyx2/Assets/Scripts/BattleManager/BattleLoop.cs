@@ -12,7 +12,6 @@ using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using DG.Tweening;
 using Jyx2.Middleware;
-using Jyx2Configs;
 using UnityEngine;
 
 namespace Jyx2.Battle
@@ -76,7 +75,8 @@ namespace Jyx2.Battle
                 {
                     await RoleManualAction(role); //人工操作
                 }
-
+                //角色运动完以后记录当前回合的生命值
+                role.PreviousRoundHp = role.Hp;
                 //标记角色已经行动过
                 model.OnActioned(role);
             }
@@ -92,7 +92,7 @@ namespace Jyx2.Battle
             CameraHelper.Instance.ChangeFollow(role.View.transform);
 
             //展示UI头像
-            Jyx2_UIManager.Instance.ShowUI(nameof(BattleMainUIPanel), BattleMainUIState.ShowRole, role);
+            await Jyx2_UIManager.Instance.ShowUIAsync(nameof(BattleMainUIPanel), BattleMainUIState.ShowRole, role);
 
             //选中框 跟随目标
             m_roleFocusRing.transform.SetParent(role.View.transform, false);
@@ -134,21 +134,26 @@ namespace Jyx2.Battle
                 role.Hp = 1;
 
             //只有实际中毒和受伤才等待
-            role.View?.MarkHpBarIsDirty();
-            await UniTask.Delay(TimeSpan.FromSeconds(0.8));
+            
+            if (hurtEffectRst > 0 || poisonEffectRst > 0)
+            {
+                role.View?.MarkHpBarIsDirty();
+                await UniTask.Delay(TimeSpan.FromSeconds(0.3f));
+            }
+            //await UniTask.Delay(TimeSpan.FromSeconds(0.8));
         }
 
         //AI角色行动
         async UniTask RoleAIAction(RoleInstance role)
         {
             //获取AI计算结果
-            var aiResult = await AIManager.Instance.GetAIResult(role);
+            var laiResult = await LuaExecutor.CallLuaAsync<AIResult,RoleInstance>("Jyx2.Battle.AIManager.GetAIResult", role);
             
             //先移动
-            await RoleMove(role, new BattleBlockVector(aiResult.MoveX, aiResult.MoveY));
+            await RoleMove(role, new BattleBlockVector(laiResult.MoveX, laiResult.MoveY));
 
             //再执行具体逻辑
-            await ExecuteAIResult(role, aiResult);
+            await ExecuteAIResult(role, laiResult);
         }
 
         //执行具体逻辑
@@ -159,10 +164,10 @@ namespace Jyx2.Battle
                 //使用道具
                 await RoleUseItem(role, aiResult.Item);
             }
-            else if (aiResult.Zhaoshi != null)
+            else if (aiResult.SkillCast != null)
             {
                 //使用技能
-                await RoleCastSkill(role, aiResult.Zhaoshi, new BattleBlockVector(aiResult.AttackX, aiResult.AttackY));
+                await RoleCastSkill(role, aiResult.SkillCast, new BattleBlockVector(aiResult.AttackX, aiResult.AttackY));
             }
             else
             {
@@ -189,14 +194,14 @@ namespace Jyx2.Battle
             role.View.Run();
 
             //播放移动
-            await role.View.transform.DOPath(path.ToArray(), path.Count * 0.2f).SetLookAt(0).SetEase(Ease.Linear);
+            await role.View.transform.DOPath(path.ToArray(), path.Count * 0.15f).SetLookAt(0).SetEase(Ease.Linear);
 
             //idle动画
             role.View.Idle();
 
             //设置逻辑位置
             role.Pos = moveTo;
-            var enemy = AIManager.Instance.GetNearestEnemy(role);
+            var enemy = LuaExecutor.CallLua<RoleInstance,RoleInstance>("Jyx2.Battle.AIManager.GetNearestEnemy", role);
             if (enemy != null)
             {
                 //面向最近的敌人
@@ -205,7 +210,7 @@ namespace Jyx2.Battle
         }
 
         //角色施展技能总逻辑
-        async UniTask RoleCastSkill(RoleInstance role, BattleZhaoshiInstance skill, BattleBlockVector skillTo)
+        async UniTask RoleCastSkill(RoleInstance role, SkillCastInstance skill, BattleBlockVector skillTo)
         {
             if (role == null || skill == null || skillTo == null)
             {
@@ -220,6 +225,10 @@ namespace Jyx2.Battle
             skill.CastCost(role); //技能消耗（左右互搏体力消耗一次，内力消耗两次）
             skill.CastMP(role);
 
+            if (RuntimeEnvSetup.CurrentModConfig.ShowSkillNameInBattle)
+            {
+                ShowRoleCastedSkillName(role, skill);
+            }
             await CastOnce(role, skill, skillTo); //攻击一次
             if (Zuoyouhubo(role, skill))
             {
@@ -228,8 +237,16 @@ namespace Jyx2.Battle
             }
         }
 
+        private void ShowRoleCastedSkillName(RoleInstance role, SkillCastInstance skill)
+        {
+            var skillName = skill.Data.Name;
+            var battleRole = role.View;
+            //与施法对象绑定生命周期，对象销毁了延时逻辑就取消掉避免NullReference访问
+            GameUtil.CallWithDelay(0.5f, () => battleRole.ShowBattleText(skillName, Color.white), battleRole);
+        }
+
         //一次施展技能
-        async UniTask CastOnce(RoleInstance role, BattleZhaoshiInstance skill, BattleBlockVector skillTo)
+        async UniTask CastOnce(RoleInstance role, SkillCastInstance skill, BattleBlockVector skillTo)
         {
             List<RoleInstance> beHitAnimationList = new List<RoleInstance>();
             //获取攻击范围
@@ -245,7 +262,7 @@ namespace Jyx2.Battle
                 //“打”自己人的招式
                 if (!skill.IsCastToEnemy() && rolei.team != role.team) continue;
 
-                var result = AIManager.Instance.GetSkillResult(role, rolei, skill, blockVector);
+                var result = LuaExecutor.CallLua<SkillCastResult, RoleInstance, RoleInstance, SkillCastInstance, BattleBlockVector>("Jyx2.Battle.DamageCaculator.GetSkillResult", role, rolei, skill, blockVector);
 
                 result.Run();
 
@@ -265,7 +282,7 @@ namespace Jyx2.Battle
             {
                 Source = role.View,
                 CoverBlocks = coverBlocks.ToTransforms(),
-                Zhaoshi = skill,
+                Skill = skill,
                 Targets = beHitAnimationList.ToMapRoles(),
             };
 
@@ -273,13 +290,13 @@ namespace Jyx2.Battle
         }
 
         //判断是否可以左右互搏
-        bool Zuoyouhubo(RoleInstance role, BattleZhaoshiInstance skill)
+        bool Zuoyouhubo(RoleInstance role, SkillCastInstance skill)
         {
             return (role.Zuoyouhubo > 0 && (skill.Data.GetSkill().DamageType == 0 || (int)skill.Data.GetSkill().DamageType == 1));
         }
 
         //使用道具
-        async UniTask RoleUseItem(RoleInstance role, Jyx2ConfigItem item)
+        async UniTask RoleUseItem(RoleInstance role, LItemConfig item)
         {
             if (role == null || item == null)
             {
@@ -294,21 +311,33 @@ namespace Jyx2.Battle
             else if (itemType == Jyx2ItemType.Anqi)
                 clip = GlobalAssetConfig.Instance.anqiClip; //选择使用暗器的动作
 
+            //显示使用道具的名字
+            role.View.ShowBattleText(item.Name, Color.yellow);
+            
             //如果配置了动作，则先播放动作
             if (clip != null)
             {
-                await role.View.PlayAnimationAsync(clip, 0.25f);
+                if (RuntimeEnvSetup.CurrentModConfig.IsPlayUseItemAnimation)
+                {
+                    await role.View.PlayAnimationAsync(clip, 0.25f);    
+                }
+                else
+                {
+                    role.View.PlayAnimationAsync(clip, 0.25f).Forget();
+                }
+                
             }
 
             role.UseItem(item);
 
-            if (GameRuntimeData.Instance.IsRoleInTeam(role.GetJyx2RoleId())) //如果是玩家角色，则从背包里扣。
-            {
-                GameRuntimeData.Instance.AddItem(item.Id, -1);
-            }
-            else //否则从角色身上扣
+            //如果角色是敌人，或者角色不在玩家队伍中，则扣随身物品
+            if (role.team == 1 || !GameRuntimeData.Instance.IsRoleInTeam(role.GetJyx2RoleId()))
             {
                 role.AddItem(item.Id, -1);
+            }
+            else //否则从玩家背包里扣
+            {
+                GameRuntimeData.Instance.AddItem(item.Id, -1);
             }
 
             Dictionary<int, int> effects = UIHelper.GetItemEffect(item);
@@ -332,7 +361,8 @@ namespace Jyx2.Battle
                 }
             }
 
-            await UniTask.Delay(TimeSpan.FromSeconds(1f));
+            if(RuntimeEnvSetup.CurrentModConfig.IsPlayUseItemAnimation)
+                await UniTask.Delay(TimeSpan.FromSeconds(0.5f));
         }
 
 
@@ -368,7 +398,12 @@ namespace Jyx2.Battle
             {
                 var ret = await WaitForPlayerInput(role, moveRange, isSelectMove);
 
-                if (ret.isRevert) //点击取消
+                if(ret.isSurrender)
+                {
+                    _manager.GetModel().SetIsSurrendered(true);
+                    break;
+                }
+                else if (ret.isRevert) //点击取消
                 {
                     isSelectMove = true;
                     role.movedStep = 0;
@@ -406,6 +441,7 @@ namespace Jyx2.Battle
             public AIResult aiResult = null;
             public bool isWait = false;
             public bool isAuto = false;
+            public bool isSurrender = false;
         }
         
         //等待玩家输入
@@ -415,7 +451,7 @@ namespace Jyx2.Battle
             Action<ManualResult> callback = delegate(ManualResult result) { t.TrySetResult(result); };
             
             //显示技能动作面板，同时接受格子输入
-            Jyx2_UIManager.Instance.ShowUI(nameof(BattleActionUIPanel),role, moveRange, isSelectMove, callback);
+            await Jyx2_UIManager.Instance.ShowUIAsync(nameof(BattleActionUIPanel),role, moveRange, isSelectMove, callback);
             
             //等待完成
             await t.Task;

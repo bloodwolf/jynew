@@ -8,6 +8,7 @@
  * 金庸老先生千古！
  */
 
+using Jyx2;
 using System.Reflection;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -36,6 +37,11 @@ public class GraphicSetting : MonoBehaviour
     /// 是否开启抗锯齿，默认开启
     /// </summary>
     public int HasAntiAliasing { get; set; }
+    
+    /// <summary>
+    /// 是否开启垂直同步，默认开启
+    /// </summary>
+    public int Vsync { get; set; }
 
     /// <summary>
     /// 阴影质量
@@ -70,38 +76,42 @@ public class GraphicSetting : MonoBehaviour
         {
             if (_globalSetting == null)
             {
-                _globalSetting = new GraphicSetting();
+                var obj = new GameObject("[GraphicSetting]");
+                DontDestroyOnLoad(obj);
+                _globalSetting = obj.AddComponent<GraphicSetting>();
                 _globalSetting.Load();
             }
             return _globalSetting;
         }
     }
 
-    public GraphicSetting()
+    void Awake()
     {
+#if UNITY_ANDROID || UNITY_IOS
+        HasFog = 1;
+        HasPost = 1;
+        HasWaterNormal = 1;
+        HasAntiAliasing = 0;
+        Vsync = 0;
+        MaxFps = MaxFpsEnum.Fps60;
+        QualityLevel = QualityLevelEnum.Mid;
+        ShaderLodLevel = ShaderLodLevelEnum.Mid;
+        ShadowQuality = ShadowQuality.Disable;
+        ShadowShowLevel = ShadowShowLevelEnum.Team;
+#else
         HasFog = 1;
         HasPost = 1;
         HasWaterNormal = 1;
         HasAntiAliasing = 1;
-#if UNITY_EDITOR
-
+        Vsync = 1;
         MaxFps = MaxFpsEnum.Fps200;
-        QualityLevel = QualityLevelEnum.High;
+        QualityLevel = QualityLevelEnum.Extreme;
         ShaderLodLevel = ShaderLodLevelEnum.High;
         ShadowQuality = ShadowQuality.All;
-
-#else
-
-        MaxFps = MaxFpsEnum.Fps120;
-        QualityLevel = QualityLevelEnum.High;
-        ShaderLodLevel = ShaderLodLevelEnum.High;
-        ShadowQuality = ShadowQuality.All;
-
+        ShadowShowLevel = ShadowShowLevelEnum.All;
 #endif
-
-        ShadowShowLevel = ShadowShowLevelEnum.Team;
     }
-
+    
     public void Save()
     {
         var type = this.GetType();
@@ -113,9 +123,9 @@ public class GraphicSetting : MonoBehaviour
             var prefsKey = $"{className}-{propName}";
             var intValue = (int)info.GetValue(this);
 
-            PlayerPrefs.SetInt(prefsKey, intValue);
+            Jyx2_PlayerPrefs.SetInt(prefsKey, intValue);
         }
-        PlayerPrefs.Save();
+        Jyx2_PlayerPrefs.Save();
     }
 
     public void Load()
@@ -127,9 +137,9 @@ public class GraphicSetting : MonoBehaviour
         {
             var propName = info.Name;
             var prefsKey = $"{className}-{propName}";
-            if (PlayerPrefs.HasKey(prefsKey))
+            if (Jyx2_PlayerPrefs.HasKey(prefsKey))
             {
-                var value = PlayerPrefs.GetInt(prefsKey);
+                var value = Jyx2_PlayerPrefs.GetInt(prefsKey);
                 info.SetValue(this, value);
             }
         }
@@ -141,6 +151,7 @@ public class GraphicSetting : MonoBehaviour
         QualitySettings.SetQualityLevel((int)QualityLevel, true);
         Shader.globalMaximumLOD = (int)ShaderLodLevel;
         QualitySettings.shadows = ShadowQuality;
+        QualitySettings.vSyncCount = Vsync;
 
         ExecuteAntiAliasing();
         /*
@@ -212,7 +223,7 @@ public class GraphicSetting : MonoBehaviour
 
     public void ExecuteAntiAliasing()
     {
-            QualitySettings.antiAliasing = HasAntiAliasing == 1? 8 : 1;
+            QualitySettings.antiAliasing = HasAntiAliasing == 1? 4 : 1;
     }
 }
 

@@ -11,7 +11,6 @@
 using ProtoBuf;
 using System.Xml.Serialization;
 using Jyx2.Middleware;
-using Jyx2Configs;
 
 namespace Jyx2
 {
@@ -28,15 +27,15 @@ namespace Jyx2
 
         //使用的招式
         [XmlIgnore]
-        public BattleZhaoshiInstance Zhaoshi;
+        public SkillCastInstance SkillCast;
         
         [XmlAttribute("skill")]
-        public string zhaoshiPK
+        public string skillCastPK
         {
             get
             {
-                if (Zhaoshi == null) return string.Empty;
-                return Zhaoshi.Data.Key.ToString();
+                if (SkillCast == null) return string.Empty;
+                return SkillCast.Data.Key.ToString();
             }
             set { }
         }
@@ -54,22 +53,57 @@ namespace Jyx2
 
         //使用的道具
         [XmlAttribute]
-        public Jyx2ConfigItem Item;
+        public LItemConfig Item;
         #endregion
 
-
+        //用来比较两个结果并显示Debug信息
+        public bool Equals(AIResult other)
+        {
+            /*if (MoveX != other.MoveX || MoveY != other.MoveY)
+            {
+                UnityEngine.Debug.LogError($"move diff {MoveX},{MoveY} - {other.MoveX},{other.MoveY}");
+                return false;
+            }
+            */
+            if (skillCastPK != other.skillCastPK)
+            {
+                UnityEngine.Debug.LogError($"skill diff {skillCastPK} ~ {other.skillCastPK}");
+                var itemid = -1;
+                var otherid = -2;
+                if (Item != null)
+                {
+                    itemid = Item.Id;
+                }
+                if (other.Item != null)
+                {
+                    otherid = other.Item.Id;
+                }
+                if (itemid != otherid)
+                {
+                    UnityEngine.Debug.LogError($"item diff {itemid} ~ {otherid}");
+                }
+                return false;
+            }
+            if (AttackX != other.AttackX || AttackY != other.AttackY)
+            {
+                UnityEngine.Debug.Log($"attack diff {AttackX},{AttackY} ~ {other.AttackX},{other.AttackY}");
+                return false;
+            }
+            UnityEngine.Debug.Log($"equal:{skillCastPK}");
+            return true;
+        }
     }
 
     public class SkillCastResult
     {
         public SkillCastResult() { }
 
-        public SkillCastResult(RoleInstance sprite, RoleInstance target, BattleZhaoshiInstance tzhaoshi, int targetx, int targety)
+        public SkillCastResult(RoleInstance sprite, RoleInstance target, SkillCastInstance tSkillCast, int targetx, int targety)
         {
             //self = new SkillCastRoleEffect(sprite);
             r1 = sprite;
             r2 = target;
-            zhaoshi = tzhaoshi;
+            skillCast = tSkillCast;
             skilltarget_x = targetx;
             skilltarget_y = targety;
         }
@@ -78,7 +112,7 @@ namespace Jyx2
         public int skilltarget_y;
 
         [XmlIgnore]
-        public BattleZhaoshiInstance zhaoshi;
+        public SkillCastInstance skillCast;
 
         [XmlIgnore]
         public RoleInstance r1;
@@ -97,21 +131,14 @@ namespace Jyx2
 
         public double GetTotalScore()
         {
-            if(r1.team != r2.team)
-            {
-                float scale = 1;
-                if (damage >= r2.Hp)
-                    scale = 1.25f;
-                float attackTwiceScale = 1;
-                if (r1.Zuoyouhubo == 1)
-                    attackTwiceScale = 2;
+            float scale = 1;
+            if (damage >= r2.Hp)
+                scale = 1.25f;
+            float attackTwiceScale = 1;
+            if (r1.Zuoyouhubo == 1)
+                attackTwiceScale = 2;
 
-                return attackTwiceScale * scale * damage + attackTwiceScale * damageMp / 5 + poison;
-            }else if(r1.team == r2.team)
-            {
-                return depoison + heal;
-            }
-            return 0;
+            return attackTwiceScale * scale * damage + attackTwiceScale * damageMp / 5;
         }
 
         public bool IsDamage()
@@ -160,7 +187,7 @@ namespace Jyx2
                 //吸取内力逻辑
                 if (rst.addMp > 0)
                 {
-                    r1.MaxMp = Tools.Limit(r1.MaxMp + rst.addMaxMp, 0, GameConst.MAX_HPMP);
+                    r1.MaxMp = Tools.Limit(r1.MaxMp + rst.addMaxMp, 0, GameConst.MAX_ROLE_MP);
                     int finalMp = Tools.Limit(r1.Mp + rst.addMp, 0, r1.MaxMp);
                     int deltaMp = finalMp - r1.Mp;
                     if (deltaMp >= 0)

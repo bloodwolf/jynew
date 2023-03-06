@@ -9,6 +9,7 @@
 /[Bb]uilds/
 /[Ll]ogs/
 /[Mm]emoryCaptures/
+/ModBuild/
 
 # Asset meta data should only be ignored when the corresponding asset is also ignored
 !/[Aa]ssets/**/*.meta
@@ -76,6 +77,7 @@ jyx2Win64Build/*
 Assets/BrokenVector*
 Assets/_TerrainAutoUpgrade*
 *.unitypackage.meta
+output
 
 #wps temp files
 ~$*

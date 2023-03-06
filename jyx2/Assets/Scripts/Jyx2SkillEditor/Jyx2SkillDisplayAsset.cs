@@ -16,18 +16,17 @@ using UnityEditor;
 public partial class Jyx2SkillDisplayAsset : ScriptableObject
 {
     public static IList<Jyx2SkillDisplayAsset> All;
-
+    
     public static Jyx2SkillDisplayAsset Get(string skillName)
     {
-        //为了在编辑器下所见即所得，所以在editor下直接载入
-#if UNITY_EDITOR
-        var clip = AssetDatabase.LoadAssetAtPath<Jyx2SkillDisplayAsset>($"Assets/BuildSource/Skills/{skillName}.asset");
-        return clip;
-#else
-        return All.Single(s => s.name == skillName);
-#endif
+        var displayAsset = All.FirstOrDefault(s => s.name == skillName);
+        if(displayAsset == null)
+        {
+            Debug.LogErrorFormat("目标技能展现配置不存在, 技能名:[{0}]", skillName);
+        }
+        return displayAsset;
     }
-    
+
     private const int MAX_SKILL_DURATION = 5;
     
     #if UNITY_EDITOR
@@ -39,7 +38,7 @@ public partial class Jyx2SkillDisplayAsset : ScriptableObject
     {
         if (!Application.isPlaying)
         {
-            SceneHelper.StartScene("Assets/Jyx2BattleScene/Jyx2SkillEditor.unity");
+            SceneHelper.StartScene("Assets/Jyx2Tools/Jyx2SkillEditor.unity");
             Debug.Log("需要再次点击预览按钮，才可以查看（在运行模式下方可预览技能效果）");
         }
         else
@@ -52,7 +51,7 @@ public partial class Jyx2SkillDisplayAsset : ScriptableObject
             }
 
             var skillEditor = FindObjectOfType<Jyx2SkillEditor>();
-            skillEditor.PreviewSkill(this.name);
+            skillEditor.PreviewSkill(this);
         }
     }
     

@@ -8,46 +8,84 @@
  * 金庸老先生千古！
  */
 using Jyx2;
-using System.Collections;
-using System.Collections.Generic;
+using Jyx2.UINavigation;
+using Jyx2.Util;
+using System;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public class SkillUIItem : MonoBehaviour
+public class SkillUIItem : MonoBehaviour,IDataContainer<SkillCastInstance>,INavigable
 {
-    BattleZhaoshiInstance m_currentSkill;
-
-    private bool hasInit = false;
-    Image m_icon;
+    SkillCastInstance m_currentSkill;
+    
     Text m_skillText;
-    Transform m_select;
-    void InitTrans() 
-    {
-        if (hasInit)
-            return;
-        hasInit = true;
-        m_icon = transform.Find("Icon").GetComponent<Image>();
-        m_skillText = transform.Find("SkillText").GetComponent<Text>();
-        m_select = transform.Find("CurrentTag");
-    }
+    Button m_ClickButton;
 
-    public void RefreshSkill(BattleZhaoshiInstance skill) 
+    public event Action<SkillUIItem> OnSkillItemClick;
+    
+    
+    void Awake()
     {
         InitTrans();
+        m_ClickButton.onClick.AddListener(OnButtonClick);
+        OnSkillItemClick = null;
+    }
+
+    void OnDestroy()
+    {
+        m_ClickButton.onClick.RemoveListener(OnButtonClick);
+    }
+
+    private void OnButtonClick()
+    {
+        OnSkillItemClick?.Invoke(this);
+    }
+
+    void InitTrans() 
+    {
+        m_ClickButton = transform.GetComponent<Button>();
+        m_skillText = transform.Find("SkillText").GetComponent<Text>();
+    }
+
+    public void SetData(SkillCastInstance skill) 
+    {
         m_currentSkill = skill;
         //TODO 更新icon
-        BattleZhaoshiInstance.ZhaoshiStatus state = skill.GetStatus();
+        SkillCastInstance.SkillCastStatus state = skill.GetStatus();
         string skillText = $"{skill.Data.Name}\nLv.{skill.Data.GetLevel()}";
         m_skillText.text = skillText;
     }
 
-    public void SetSelect(bool se) 
-    {
-        m_select.gameObject.SetActive(se);
-    }
-
-    public BattleZhaoshiInstance GetSkill() 
+    public SkillCastInstance GetSkill() 
     {
         return m_currentSkill;
+    }
+
+    public void Connect(INavigable up = null, INavigable down = null, INavigable left = null, INavigable right = null)
+    {
+        if (m_ClickButton == null)
+            return;
+        Navigation navigation = new Navigation();
+        navigation.mode = Navigation.Mode.Explicit;
+        navigation.selectOnUp = up?.GetSelectable();
+        navigation.selectOnDown = down?.GetSelectable();
+        navigation.selectOnLeft = left?.GetSelectable();
+        navigation.selectOnRight = right?.GetSelectable();
+        m_ClickButton.navigation = navigation;
+    }
+
+    public Selectable GetSelectable()
+    {
+        return m_ClickButton;
+    }
+
+    public void Select(bool notifyEvent)
+    {
+        EventSystem.current.SetSelectedGameObject(m_ClickButton.gameObject);
+        if (notifyEvent)
+        {
+            m_ClickButton.onClick?.Invoke();
+        }
     }
 }

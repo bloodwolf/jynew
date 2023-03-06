@@ -7,30 +7,52 @@
  *
  * 金庸老先生千古！
  */
-using Jyx2.Middleware;
 
 using Jyx2;
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Text;
-using Jyx2Configs;
-using UnityEngine;
-using UnityEngine.UI;
+using i18n.TranslatorDef;
+using System.Linq;
 
-public partial class BagUIPanel:Jyx2_UIBase
+//代码数据结构遗留问题，不太好动道具存档数据结构，这里用别名处理下
+using ItemArchiveData = System.Collections.Generic.KeyValuePair<string, (int, int)>; //<道具id，(道具数量，获取时间戳)> 
+using Jyx2.Util;
+using UnityEngine;
+using Jyx2.UINavigation;
+using UnityEngine.UI;
+using UnityEngine.Purchasing;
+using UnityEngine.EventSystems;
+
+public partial class BagUIPanel : Jyx2_UIBase
 {
+    [SerializeField]
+    private string m_BagItemPrefabPath;
+
+    [SerializeField]
+    private SelectButtonGroup m_TabGroup;
+
     public override UILayer Layer => UILayer.NormalUI;
 
-    Action<int> m_callback;
-    Dictionary<string,int> m_itemDatas;
-    Jyx2ItemUI m_selectItem;
-    Func<Jyx2ConfigItem, bool> m_filter = null;
-    private bool castFromSelectPanel=false;
-    private int current_item;
+    Action<int> m_UseItemCallBack;
 
-    enum BagFilter
+    Jyx2ItemUI m_selectItem;
+    Func<LItemConfig, bool> m_filter;
+
+    private bool castFromSelectPanel = false;
+
+    private int m_PreSelectItemId;
+
+    private List<ItemArchiveData> m_ItemDatas = new List<ItemArchiveData>();
+
+    private List<Jyx2ItemUI> m_VisibleItems = new List<Jyx2ItemUI>();
+
+    private List<Jyx2ItemUI> m_CachedItems = new List<Jyx2ItemUI>();
+
+    public bool IsUseButtonActive => UseBtn_Button.gameObject.activeInHierarchy;
+
+    enum BagItemTabType
     {
+        None = -1,
         All = 0,
         Item,
         Cost,
@@ -39,188 +61,196 @@ public partial class BagUIPanel:Jyx2_UIBase
         Anqi
     }
 
-    private BagFilter _filter = BagFilter.All;
-    
+    private BagItemTabType m_TabType = BagItemTabType.None;
+
+    private void Awake()
+    {
+        m_TabGroup.OnButtonSelect.AddListener(OnTabSelect);
+    }
+
+    private void OnDestroy()
+    {
+        m_TabGroup.OnButtonSelect.RemoveListener(OnTabSelect);
+    }
+
     protected override void OnCreate()
     {
         InitTrans();
         IsBlockControl = true;
-        BindListener(UseBtn_Button, OnUseBtnClick);
-        BindListener(CloseBtn_Button, OnCloseBtnClick);
-    }
-    
-    private void OnEnable()
-    {
-        GlobalHotkeyManager.Instance.RegistHotkey(this, KeyCode.Escape, OnCloseBtnClick);
-    }
-
-    private void OnDisable()
-    {
-        GlobalHotkeyManager.Instance.UnRegistHotkey(this, KeyCode.Escape);
+        BindListener(UseBtn_Button, OnUseBtnClick, false);
+        BindListener(CloseBtn_Button, OnCloseBtnClick, false);
     }
 
     protected override void OnShowPanel(params object[] allParams)
     {
         base.OnShowPanel(allParams);
-        m_itemDatas = (Dictionary<string,int>)allParams[0];
-        if(allParams.Length > 1)
-            m_callback = (Action<int>)allParams[1];
+        castFromSelectPanel = false;
+        if (allParams.Length > 0)
+            m_UseItemCallBack = (Action<int>)allParams[0];
+        if (allParams.Length > 1)
+            m_filter = (Func<LItemConfig, bool>)allParams[1];
         if (allParams.Length > 2)
-            m_filter = (Func<Jyx2ConfigItem, bool>)allParams[2];
-        if (allParams.Length > 3)
         {
             castFromSelectPanel = true;
-            current_item = (int) allParams[3];
+            m_PreSelectItemId = (int)allParams[2];
         }
-        else castFromSelectPanel = false;
-
-        //道具类型过滤器
-        int index = 0;
-        foreach (var btn in m_Filters)
-        {
-            btn.onClick.RemoveAllListeners();
-            var index1 = index;
-            btn.onClick.AddListener(() =>
-            {
-                _filter = (BagFilter) (index1);
-                RefreshFocusFilter();
-                RefreshScroll();
-            });
-            index++;
-        }
-
-        _filter = BagFilter.All;
-        RefreshFocusFilter();
-        RefreshScroll();
+        m_TabGroup.SelectIndex(0);
     }
 
-    void RefreshScroll() 
+    private void OnTabSelect(int idx)
     {
-        HSUnityTools.DestroyChildren(ItemRoot_RectTransform);
-        bool hasSelect = false;
-        foreach (var kv in m_itemDatas)
-        {
-            string id = kv.Key;
-            int count = kv.Value;
-
-            var item = GameConfigDatabase.Instance.Get<Jyx2ConfigItem>(id);
-            if (item == null)
-            {
-                Debug.LogError("cannot get item data, id=" + id);
-                continue;
-            }
-            //item filter
-            if (m_filter != null && m_filter(item) == false)
-                continue;
-
-            if (_filter == BagFilter.Item && item.GetItemType() != Jyx2ItemType.TaskItem) continue;
-            if (_filter == BagFilter.Anqi && item.GetItemType() != Jyx2ItemType.Anqi) continue;
-            if (_filter == BagFilter.Book && item.GetItemType() != Jyx2ItemType.Book) continue;
-            if (_filter == BagFilter.Cost && item.GetItemType() != Jyx2ItemType.Costa) continue;
-            if (_filter == BagFilter.Equipment && item.GetItemType() != Jyx2ItemType.Equipment) continue;
-            
-
-            var itemUI = Jyx2ItemUI.Create(int.Parse(id), count);
-            itemUI.transform.SetParent(ItemRoot_RectTransform);
-            itemUI.transform.localScale = Vector3.one;
-            var btn = itemUI.GetComponent<Button>();
-
-            BindListener(btn, () => 
-            {
-                OnItemClick(itemUI);
-            });
-            if (!hasSelect) 
-            {
-                m_selectItem = itemUI;
-                hasSelect = true;
-            }
-            itemUI.Select(m_selectItem == itemUI);
-        }
-
-        setBtnText();
-
-        ShowItemDes();
+        var newTabType = (BagItemTabType)(idx);
+        if (m_TabType == newTabType)
+            return;
+        m_TabType = newTabType;
+        ClearSelectItem();
+        RefreshItems();
     }
 
-    void ShowItemDes() 
+    void ClearSelectItem()
     {
-        if (m_selectItem == null) 
+        if(m_selectItem != null)
         {
-            UseBtn_Button.gameObject.SetActive(false);
-            ItemDes_RectTransform.gameObject.SetActive(false);
+            m_selectItem.SetSelectState(false, false);
+            m_selectItem = null;
+        }
+    }
+
+    void RefreshItems()
+    {
+        m_ItemDatas.Clear();
+        m_VisibleItems.Clear();
+
+        var visibleItems = GameRuntimeData.Instance.Items.OrderBy(item => item.Value.Item2 /*按时间排序*/)
+                                                         .Where(IsItemVisible);
+        m_ItemDatas.AddRange(visibleItems);
+
+        Action<int, Jyx2ItemUI, ItemArchiveData> OnBagItemCreate = (idx, item, data) =>
+        {   
+            item.SetSelectState(m_PreSelectItemId == item.ItemId, false);
+            m_VisibleItems.Add(item);
+            item.OnItemSelect -= OnItemSelect;
+            item.OnItemSelect += OnItemSelect;
+        };
+
+
+        MonoUtil.GenerateMonoElementsWithCacheList(m_BagItemPrefabPath, m_ItemDatas, m_CachedItems, ItemRoot_GridLayoutGroup.transform, OnBagItemCreate);
+
+        int col = ItemRoot_GridLayoutGroup.constraintCount;
+        int row = m_VisibleItems.Count % col == 0 ? m_VisibleItems.Count / col : m_VisibleItems.Count / col + 1;
+        NavigateUtil.SetUpNavigation(m_VisibleItems, row, col);
+
+        PreSelectItem();
+        //以后如果加载项多了用MonoUtil.GenerateMonoElementsAsync
+    }
+
+    private void PreSelectItem()
+    {
+        var idx = m_VisibleItems.FindIndex(item => item.ItemId == m_PreSelectItemId);
+        if (idx == -1) idx = 0;
+        var item = m_VisibleItems.SafeGet(idx);
+        if (item != null)
+        {
+            EventSystem.current.SetSelectedGameObject(item.gameObject);
+            item.SetSelectState(true, true);
+        }
+        else
+        {
+            ClearSelectItem();
+            RefreshItemDetail();
+            RefreshButtonText();
+        }
+    }
+
+    private bool IsItemVisible(ItemArchiveData itemData)
+    {
+        var item = LuaToCsBridge.ItemTable[int.Parse(itemData.Key)];
+        if (item == null)
+            return false;
+        if (m_filter != null && !m_filter(item))
+            return false;
+
+        if (m_TabType == BagItemTabType.Item && item.GetItemType() != Jyx2ItemType.TaskItem) return false;
+        if (m_TabType == BagItemTabType.Anqi && item.GetItemType() != Jyx2ItemType.Anqi) return false;
+        if (m_TabType == BagItemTabType.Book && item.GetItemType() != Jyx2ItemType.Book) return false;
+        if (m_TabType == BagItemTabType.Cost && item.GetItemType() != Jyx2ItemType.Costa) return false;
+        if (m_TabType == BagItemTabType.Equipment && item.GetItemType() != Jyx2ItemType.Equipment) return false;
+
+        return true;
+    }
+
+
+    void RefreshItemDetail()
+    {
+        if (m_selectItem == null)
+        {
+            UseBtn_Button.gameObject.BetterSetActive(false);
+            ItemDes_RectTransform.gameObject.BetterSetActive(false);
             return;
         }
 
-        ItemDes_RectTransform.gameObject.SetActive(true);
-        UseBtn_Button.gameObject.SetActive(true);
-        var item = m_selectItem.GetItem();
+        ItemDes_RectTransform.gameObject.BetterSetActive(true);
+        UseBtn_Button.gameObject.BetterSetActive(true);
+        var item = m_selectItem.GetItemConfigData();
         DesText_Text.text = UIHelper.GetItemDesText(item);
     }
 
-    void OnItemClick(Jyx2ItemUI itemUI) 
+    void OnItemSelect(Jyx2ItemUI itemUI)
     {
         if (m_selectItem == itemUI)
             return;
 
-        if (m_selectItem)
-            m_selectItem.Select(false);
+        if (m_selectItem != null)
+            m_selectItem.SetSelectState(false, false);
         m_selectItem = itemUI;
-        m_selectItem.Select(true);
-        
-        setBtnText();
-
-        ShowItemDes();
+        m_selectItem.SetSelectState(true, false);
+        RefreshButtonText();
+        RefreshItemDetail();
     }
 
-    void OnCloseBtnClick() 
+    public void OnCloseBtnClick()
     {
+        m_UseItemCallBack?.Invoke(-1);
         Jyx2_UIManager.Instance.HideUI(nameof(BagUIPanel));
     }
 
-    void OnUseBtnClick() 
+    public void OnUseBtnClick()
     {
-        if (m_selectItem == null || m_callback ==null)
+        if (m_selectItem == null || m_UseItemCallBack == null)
             return;
-        Action<int> call = m_callback;
-        var item = m_selectItem.GetItem();
-        
-        //if (item.ItemType == 3) //使用未遂，不关闭bag
-        //{
-            Jyx2_UIManager.Instance.HideUI(nameof(BagUIPanel));
-        //}
-        call(item.Id);
+        Action<int> callback = m_UseItemCallBack;
+        var item = m_selectItem.GetItemConfigData();
+        Jyx2_UIManager.Instance.HideUI(nameof(BagUIPanel));
+        callback?.Invoke(item.Id);
     }
 
     protected override void OnHidePanel()
     {
         base.OnHidePanel();
         m_selectItem = null;
-        m_callback = null;
+        m_UseItemCallBack = null;
         m_filter = null;
-        HSUnityTools.DestroyChildren(ItemRoot_RectTransform);
+        ClearSelectItem();
+        m_TabType = BagItemTabType.None;
     }
 
-    void setBtnText()
+    void RefreshButtonText()
     {
-        if (m_selectItem==null)return;
-        if (castFromSelectPanel && m_selectItem.GetItem().Id == current_item)
-            UseBtn_Text.text = "卸 下";
+        if (m_selectItem == null) 
+            return;
+        if (castFromSelectPanel && m_selectItem.ItemId == m_PreSelectItemId)
+            UseText_Text.text = "卸 下".GetContent(nameof(BagUIPanel));
         else
-            UseBtn_Text.text = "使 用";
+            UseText_Text.text = "使 用".GetContent(nameof(BagUIPanel));
     }
 
-
-    void RefreshFocusFilter()
+    public void TabLeft()
     {
-        foreach (var btn in m_Filters)
-        {
-            btn.GetComponent<Image>().color = Color.white;
-        }
-
-        int index = (int) _filter;
-        
-        //高亮的边框颜色等于文字颜色
-        m_Filters[index].GetComponent<Image>().color = m_Filters[index].GetComponentInChildren<Text>().color; 
+        m_TabGroup.SelectIndex(m_TabGroup.CurButtonIndex - 1);
     }
 
+    public void TabRight()
+    {
+        m_TabGroup.SelectIndex(m_TabGroup.CurButtonIndex + 1);
+    }
 }

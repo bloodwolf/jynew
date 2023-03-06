@@ -4,7 +4,7 @@ using UnityEngine;
 namespace ES3Types
 {
 	[UnityEngine.Scripting.Preserve]
-	[ES3PropertiesAttribute("Key", "Name", "Sex", "Level", "Exp", "Attack", "Qinggong", "Defence", "Heal", "UsePoison", "DePoison", "AntiPoison", "Quanzhang", "Yujian", "Shuadao", "Qimen", "Anqi", "Wuxuechangshi", "Pinde", "AttackPoison", "Zuoyouhubo", "Shengwang", "IQ", "ExpForItem", "Wugongs", "Items", "Mp", "MaxMp", "MpType", "Hp", "MaxHp", "Hurt", "Poison", "Tili", "ExpForMakeItem", "Weapon", "Armor", "Xiulianwupin", "CurrentSkill")]
+	[ES3PropertiesAttribute("Key", "Name", "Sex", "Level", "Exp", "Attack", "Qinggong", "Defence", "Heal", "UsePoison", "DePoison", "AntiPoison", "Quanzhang", "Yujian", "Shuadao", "Qimen", "Anqi", "Wuxuechangshi", "Pinde", "AttackPoison", "Zuoyouhubo", "Shengwang", "IQ", "ExpForItem", "Wugongs", "Items", "Mp", "MaxMp", "MpType", "Hp", "MaxHp", "Hurt", "Poison", "Tili", "ExpForMakeItem", "Weapon", "Armor", "Xiulianwupin", "CurrentSkill", "HpInc")]
 	public class ES3UserType_RoleInstance : ES3ObjectType
 	{
 		public static ES3Type Instance = null;
@@ -41,7 +41,7 @@ namespace ES3Types
 			writer.WriteProperty("IQ", instance.IQ, ES3Type_int.Instance);
 			writer.WriteProperty("ExpForItem", instance.ExpForItem, ES3Type_int.Instance);
 			writer.WriteProperty("Wugongs", instance.Wugongs, ES3Internal.ES3TypeMgr.GetES3Type(typeof(System.Collections.Generic.List<Jyx2.SkillInstance>)));
-			writer.WriteProperty("Items", instance.Items, ES3Internal.ES3TypeMgr.GetES3Type(typeof(System.Collections.Generic.List<Jyx2Configs.Jyx2ConfigCharacterItem>)));
+			writer.WriteProperty("Items", instance.Items, ES3Internal.ES3TypeMgr.GetES3Type(typeof(System.Collections.Generic.List<Jyx2.CsRoleItem>)));
 			writer.WriteProperty("Mp", instance.Mp, ES3Type_int.Instance);
 			writer.WriteProperty("MaxMp", instance.MaxMp, ES3Type_int.Instance);
 			writer.WriteProperty("MpType", instance.MpType, ES3Type_int.Instance);
@@ -55,6 +55,7 @@ namespace ES3Types
 			writer.WriteProperty("Armor", instance.Armor, ES3Type_int.Instance);
 			writer.WriteProperty("Xiulianwupin", instance.Xiulianwupin, ES3Type_int.Instance);
 			writer.WriteProperty("CurrentSkill", instance.CurrentSkill, ES3Type_int.Instance);
+			writer.WriteProperty("HpInc", instance.HpInc, ES3Type_int.Instance);
 		}
 
 		protected override void ReadObject<T>(ES3Reader reader, object obj)
@@ -141,7 +142,7 @@ namespace ES3Types
 						instance.Wugongs = reader.Read<System.Collections.Generic.List<Jyx2.SkillInstance>>();
 						break;
 					case "Items":
-						instance.Items = reader.Read<System.Collections.Generic.List<Jyx2Configs.Jyx2ConfigCharacterItem>>();
+						instance.Items = reader.Read<System.Collections.Generic.List<Jyx2.CsRoleItem>>();
 						break;
 					case "Mp":
 						instance.Mp = reader.Read<System.Int32>(ES3Type_int.Instance);
@@ -181,6 +182,9 @@ namespace ES3Types
 						break;
 					case "CurrentSkill":
 						instance.CurrentSkill = reader.Read<System.Int32>(ES3Type_int.Instance);
+						break;
+					case "HpInc":
+						instance.HpInc = reader.Read<System.Int32>(ES3Type_int.Instance);
 						break;
 					default:
 						reader.Skip();

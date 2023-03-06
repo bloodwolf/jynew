@@ -2,14 +2,34 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
+using i18n;
+using i18n.TranslatorDef;
+using Jyx2;
+using Jyx2.ResourceManagement;
 using Sirenix.OdinInspector;
 using UnityEngine;
-using UnityEngine.AddressableAssets;
 
 [CreateAssetMenu(fileName = "GlobalAssetConfig", menuName = "金庸重制版/全局资源配置文件")]
 public class GlobalAssetConfig : ScriptableObject
 {
-    public static GlobalAssetConfig Instance = null;
+    public static GlobalAssetConfig Instance { get; set; }= null;
+
+    
+    
+    [BoxGroup("游戏MOD")] [LabelText("初始MOD ID")]
+    public string startModId;
+
+    [BoxGroup("基础配置")] [LabelText("Lua引导文件")]
+    [InfoBox("这里定义所有的lua到C#的公共绑定和一些公用函数")]
+    public TextAsset rootLuaFile;
+    
+    //--------------------------------------------------------------------------------------------
+    //以下均为新增的语言配置文件
+    //--------------------------------------------------------------------------------------------
+    [BoxGroup("语言相关")] [LabelText("语言文件")]
+    public Translator defaultTranslator;
+    //--------------------------------------------------------------------------------------------
+    //--------------------------------------------------------------------------------------------
     
     [BoxGroup("游戏动作")] [LabelText("默认受击动作")]
     public AnimationClip defaultBeHitClip;
@@ -47,12 +67,11 @@ public class GlobalAssetConfig : ScriptableObject
     [BoxGroup("游戏相机配置")] [LabelText("相机偏移")]
     public Vector3 defaultVcamOffset = new Vector3(7, 10, 8);
 
-    [BoxGroup("地图设置")] [LabelText("大地图")] 
-    public AssetReference BigMap;
-
-    [InfoBox("某些角色名与人物ID不严格对应，在此修正。用于对话中正确显示名字")] [BoxGroup("对话人物ID修正")] [TableList] 
-    [HideLabel]
-    public List<StoryIdNameFix> StoryIdNameFixes;
+    [BoxGroup("游戏相机配置")][LabelText("相机偏移（近）")]
+    public Vector3 vcamOffsetClose = new Vector3(5, 8, 5);
+    
+    [BoxGroup("地图设置")] [LabelText("默认主角居名字")] 
+    public string defaultHomeName;
 
     [BoxGroup("预缓存Prefab")]
     [HideLabel]
@@ -60,10 +79,8 @@ public class GlobalAssetConfig : ScriptableObject
 
     public readonly Dictionary<string, GameObject> CachePrefabDict = new Dictionary<string, GameObject>();
     
-    
-    
 
-    public void OnLoad()
+    public async UniTask OnLoad()
     {
         //将prefab放置在Dictionary中，用来提高查找速度
         if (CachedPrefabs != null)
@@ -76,6 +93,7 @@ public class GlobalAssetConfig : ScriptableObject
             }
         }
     }
+
 }
 
 [Serializable]

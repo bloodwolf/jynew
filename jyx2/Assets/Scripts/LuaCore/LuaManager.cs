@@ -9,23 +9,27 @@
  */
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
-using UnityEngine.AddressableAssets;
 using XLua;
-using Jyx2.MOD;
+using Jyx2.ResourceManagement;
 using Jyx2.Middleware;
+using Jyx2.MOD;
+using System.IO;
+using Jyx2.MOD.ModV2;
 
 namespace Jyx2
 {
     public class LuaManager
     {
-        public const string LUA_ROOT_MENU = "";
         public const bool LUAJIT_ENABLE = false;
 
+        /// <summary>
+        /// 是否在editor中调试时热加载lua（可以不重启游戏进行编辑）
+        /// </summary>
+        public const bool HOTRELOAD_LUA_IN_EDITOR = true;
 
         public LuaManager() { }
 
@@ -34,13 +38,18 @@ namespace Jyx2
             return _inited;
         }
 
-        public static object GetLuaEnv()
+        public static LuaEnv GetLuaEnv()
         {
-            return luaEnv as object;
+            return luaEnv;
         }
 
-        private static void Clear()
+        public static void Clear()
         {
+            LuaMod_DeInit();
+            //清除Lua转Cs相关接口
+            LuaToCsBridge.LuaToCsBridgeDispose();
+            //LuaScript清理
+            luaEnv.DoString("if Jyx2 ~= nil then Jyx2:DeInit() end");
 
             _inited = false;
 
@@ -57,7 +66,8 @@ namespace Jyx2
 
             if (luaEnv != null)
             {
-                luaEnv.FullGc();
+                luaEnv.Dispose();
+                //luaEnv.FullGc();
                 //HSUtils.Log ("★★★Destroying lua state..");
                 luaEnv = null;
             }
@@ -65,16 +75,30 @@ namespace Jyx2
             ClearLuaMapper();
         }
 
-        public static void Init(bool forceReset = false)
+        public static void Init(string rootLuaFileText)
         {
-            if (forceReset)
-            {
-                Clear();
-            }
             if (_inited) return;
 
             
             luaEnv = new LuaEnv();
+
+            luaEnv.AddLoader((ref string filename) =>
+            {
+                //require时首先去当前的LuaScript中查找
+                var luaFile = ResLoader.LoadAssetSync<TextAsset>($"Assets/LuaScripts/{filename}.lua");
+                if (luaFile != null)
+                    return Encoding.UTF8.GetBytes(luaFile.text);
+                return null;
+            });
+
+            luaEnv.AddLoader((ref string filename) =>
+            {
+                //require时默认去baseasset下加载lua
+                var luaFile = ResLoader.LoadAssetSync<TextAsset>($"Assets/BuildSource/Lua/{filename}.lua");
+                if (luaFile != null)
+                    return Encoding.UTF8.GetBytes(luaFile.text);
+                return null;
+            });
 
             //jit interpreter
             if (LuaManager.LUAJIT_ENABLE)
@@ -82,23 +106,50 @@ namespace Jyx2
                 luaEnv.DoString("\nif jit then\n\n  jit.off();jit.flush()\n\nend");
             }
 
-            //load lua base files
-            foreach (var f in files)
+
+            if (!string.IsNullOrEmpty(rootLuaFileText))
             {
-                luaEnv.DoString(LoadLua(LuaManager.LUA_ROOT_MENU + f.Replace(".lua", "")), f);
+                luaEnv.DoString(rootLuaFileText);    
+            }
+            
+            _inited = true;
+            //LoadLuaFiles();
+        }
+
+        public static void PreloadLua()
+        {
+            if (RuntimeEnvSetup.CurrentModConfig == null)
+            {
+                Debug.LogError("错误：没初始化运行环境就调用了preloadlua");
+                return;
             }
 
-            _inited = true;
-            LoadLuaFiles();
-
-
+            if (RuntimeEnvSetup.CurrentModConfig.PreloadedLua != null)
+            {
+                UniTask.Void(async () =>
+                {
+                    foreach (var lua in RuntimeEnvSetup.CurrentModConfig.PreloadedLua)
+                    {
+                        Debug.Log($"preloading {lua}...");
+                        if (_luaMapper.ContainsKey(lua))
+                        {
+                            
+                            await LuaExecutor.Execute(lua);
+                        }
+                        
+                        Debug.Log($"load {lua} finished.");
+                    }
+                    
+                    Debug.Log("PreloadLua finished");
+                });
+            }
         }
 
         private static object[] Call(string functionName, params object[] paras)
         {
             if (!_inited)
             {
-                Init();
+                Init(null);
             }
 
             var func = getCachedFunction(functionName);
@@ -117,7 +168,7 @@ namespace Jyx2
         {
             if (!_inited)
             {
-                Init();
+                Init(null);
             }
 
             var func = getCachedFunction(functionName);
@@ -161,11 +212,12 @@ namespace Jyx2
 
         public static byte[] LoadLua(string path)
         {
-            //BY CG：在unity编辑模式下，方便调试，不用repack lua
-/*            if (Application.isEditor)
+            //在unity编辑模式下，方便调试，不用repack lua
+            if (HOTRELOAD_LUA_IN_EDITOR && Application.isEditor)
             {
-                return File.ReadAllBytes("Assets/BuildSource/Lua/" + path + ".lua");
-            }*/
+                var curMod = RuntimeEnvSetup.CurrentModConfig.ModId;
+                return File.ReadAllBytes($"Assets/Mods/{curMod}/Lua/" + path + ".lua");
+            }
 
             //处理文件名格式
             if (!path.Contains("/"))
@@ -173,31 +225,15 @@ namespace Jyx2
                 path = path.Replace(".", "/");
             }
 
-            /*
-            if (LuaManager.LUAJIT_ENABLE)
-            {
-                path = "/luajit/" + path;
-            }
-            else
-            {
-                path = "/lua/" + path;
-            }
-
-            if (!path.EndsWith(".lua"))
-            {
-                path += ".lua";
-            }
-            */
-
             path = path.Split('/').Last();
             
-            if (__luaMapper.ContainsKey(path))
+            if (_luaMapper.ContainsKey(path))
             {
-                string code = Encoding.UTF8.GetString(__luaMapper[path]);
+                string code = Encoding.UTF8.GetString(_luaMapper[path]);
                 
                 Debug.Log(code);
                 
-                return __luaMapper[path];
+                return _luaMapper[path];
             }
             else
             {
@@ -206,56 +242,85 @@ namespace Jyx2
             }
         }
 
+        public static void LuaMod_Init()
+        {
+            Call("LuaMod_Init");
+        }
+
+        public static void LuaMod_DeInit()
+        {
+            Call("LuaMod_DeInit");
+        }
 
         #region private
         private static void ClearLuaMapper()
         {
-            __luaMapper = null;
+            _luaMapper = null;
         }
 
         public static async UniTask InitLuaMapper()
         {
-            /*            if (Application.isEditor) //编辑器模式下不需要缓存，直接读取文件
-                            return;*/
-            var paths = new List<string>();
-            var overridePaths = new List<string>();
-            FileTools.GetAllFilePath("Assets/BuildSource/Lua", paths, new List<string>() { ".lua" });
+            var assets = await ResLoader.LoadAssets<TextAsset>("Assets/Lua/");
 
-            foreach (var path in paths)
-            {
-                var overridePath = path.Substring(path.IndexOf("Assets"));
-                overridePaths.Add(overridePath);
-            }
-
-            var assets = await MODLoader.LoadAssets<TextAsset>(overridePaths);
-
-            __luaMapper = new Dictionary<string, byte[]>();
+            _luaMapper = new Dictionary<string, byte[]>();
             foreach (var a in assets)
             {
-                __luaMapper[a.name] = Encoding.UTF8.GetBytes(a.text);
+                _luaMapper[a.name] = Encoding.UTF8.GetBytes(a.text);
+            }
+            
+            /*var mod = RuntimeEnvSetup.GetCurrentMod();
+            if (mod is GameModEditor)
+            {
+                await InitMapperFromEditor();
+            }
+            else
+            {
+                var assets = await ResLoader.LoadAssets<TextAsset>("Assets/Lua/");
+
+                _luaMapper = new Dictionary<string, byte[]>();
+                foreach (var a in assets)
+                {
+                    _luaMapper[a.name] = Encoding.UTF8.GetBytes(a.text);
+                }
+            }*/
+        }
+
+        private static async UniTask InitMapperFromEditor()
+        {
+            try
+            {
+                var curModDir = RuntimeEnvSetup.CurrentModConfig.ModRootDir + "/Lua";
+                var luaFilePaths = new List<string>();
+                var luafilter = new List<string>() { ".lua" };
+                FileTools.GetAllFilePath(curModDir, luaFilePaths, luafilter);
+
+                Debug.Log("加载当前mod的lua重载文件, 路径:" + curModDir);
+
+                if (luaFilePaths.Count == 0)
+                    return;
+
+                foreach (var path in luaFilePaths)
+                {
+                    var fileName = Path.GetFileNameWithoutExtension(path);
+                    if(_luaMapper.ContainsKey(fileName))
+                    {
+                        Debug.LogFormat("Lua文件[{0}]的逻辑将会被AB外的同名文件重载掉", fileName);
+                    }
+                    _luaMapper[fileName] = await FileTools.ReadAllBytesAsync(path);
+                }
+            }
+            catch(Exception ex)
+            {
+                Debug.LogError("读取Mod文件夹的Lua文件异常:" + ex.ToString());
             }
         }
-        
-        private static readonly string[] files = new string[]{
-            "main.lua",
-        };
-        
+
+
         
         private static bool _inited = false;
         private static LuaEnv luaEnv;
-        private static void LoadLuaFiles()
-        {
-            LuaTable files = Call<LuaTable>("main_getLuaFiles");
-            foreach (var luaFile in files.Cast<List<string>>())
-            {
-                //HSUtils.Log(luaFile);
-                luaEnv.DoString(LoadLua(LuaManager.LUA_ROOT_MENU + luaFile.Replace(".lua", "")), luaFile);
-            }
-            files.Dispose();
-            files = null;
-        }
 
-        private static Dictionary<string, byte[]> __luaMapper = null;
+        private static Dictionary<string, byte[]> _luaMapper = null;
 
         private static Dictionary<string, LuaFunction> _cachedFunc = new Dictionary<string, LuaFunction>();
         private static LuaFunction getCachedFunction(string name)
@@ -265,7 +330,12 @@ namespace Jyx2
                 return _cachedFunc[name];
             }
             var func = luaEnv.Global.Get<LuaFunction>(name); // TODO:XLua fix
-            _cachedFunc.Add(name, func);
+            if(func != null)
+                _cachedFunc.Add(name, func);
+            else
+            {
+                Debug.LogWarning("尝试获取不存在的Lua函数, function name :" + name);
+            }
             return func;
         }
         #endregion
